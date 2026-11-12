@@ -1,0 +1,11 @@
+[package]
+name = "poker-evaluator"
+version = "0.1.0"
+edition = "2021"
+authors = ["GTO Studio"]
+description = "High-performance Texas Hold'em 5-to-7 card hand evaluator in Rust with exact tiebreaking and showdown comparison"
+license = "Apache-2.0"
+
+[dependencies]
+
+[dev-dependencies]

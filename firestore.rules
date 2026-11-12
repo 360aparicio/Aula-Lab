@@ -1,0 +1,179 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Pillar 0: Global Default-Deny Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Primitive Helpers
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isVerifiedUser() && request.auth.uid == userId;
+    }
+
+    // Validation Blueprint: UserProfile
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasAll([
+        'uid', 'displayName', 'elo', 'masteryScore', 'totalDecisions',
+        'totalMistakes', 'roadmapDoneIds', 'categoryStats', 'createdAt', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'uid', 'displayName', 'photoURL', 'elo', 'masteryScore', 'totalDecisions',
+        'totalMistakes', 'roadmapDoneIds', 'categoryStats', 'createdAt', 'updatedAt'
+      ])
+      && data.uid is string && data.uid.size() >= 6 && data.uid.size() <= 128
+      && data.uid == request.auth.uid && data.uid == userId
+      && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80
+      && (!data.keys().hasAny(['photoURL']) || (data.photoURL is string && data.photoURL.size() <= 512))
+      && data.elo is number && data.elo >= 0 && data.elo <= 5000
+      && data.masteryScore is number && data.masteryScore >= 0 && data.masteryScore <= 100
+      && data.totalDecisions is number && data.totalDecisions >= 0
+      && data.totalMistakes is number && data.totalMistakes >= 0
+      && data.roadmapDoneIds is list && data.roadmapDoneIds.size() <= 32
+      && (data.roadmapDoneIds.size() == 0 || (data.roadmapDoneIds[0] is string && data.roadmapDoneIds[0].size() <= 32))
+      && data.categoryStats is map
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    // Validation Blueprint: SM2ItemRecord
+    function isValidSM2Item(data, userId) {
+      return data.keys().hasAll([
+        'ownerId', 'itemType', 'title', 'category', 'prompt', 'explanation',
+        'rule', 'intervalDays', 'repetitions', 'easeFactor', 'nextReviewDate',
+        'reviewCount', 'createdAt', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'ownerId', 'itemType', 'title', 'category', 'prompt', 'explanation',
+        'rule', 'intervalDays', 'repetitions', 'easeFactor', 'nextReviewDate',
+        'reviewCount', 'createdAt', 'updatedAt'
+      ])
+      && data.ownerId is string && data.ownerId.size() >= 6 && data.ownerId.size() <= 128
+      && data.ownerId == request.auth.uid && data.ownerId == userId
+      && data.itemType in ['concept', 'hand', 'scenario']
+      && data.title is string && data.title.size() >= 1 && data.title.size() <= 160
+      && data.category is string && data.category.size() >= 1 && data.category.size() <= 80
+      && data.prompt is string && data.prompt.size() <= 600
+      && data.explanation is string && data.explanation.size() <= 1200
+      && data.rule is string && data.rule.size() <= 600
+      && data.intervalDays is number && data.intervalDays >= 0 && data.intervalDays <= 3650
+      && data.repetitions is number && data.repetitions >= 0 && data.repetitions <= 500
+      && data.easeFactor is number && data.easeFactor >= 1.3 && data.easeFactor <= 5.0
+      && data.nextReviewDate is number && data.nextReviewDate >= 0
+      && data.reviewCount is number && data.reviewCount >= 0
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    // Validation Blueprint: MistakeRecord
+    function isValidMistakeRecord(data, userId) {
+      return data.keys().hasAll([
+        'ownerId', 'scenarioTitle', 'heroCombo', 'wetness',
+        'evLossPercentOfPot', 'chosenAction', 'bestAction', 'prescriptiveFix', 'createdAt'
+      ])
+      && data.keys().hasOnly([
+        'ownerId', 'scenarioTitle', 'heroCombo', 'wetness',
+        'evLossPercentOfPot', 'chosenAction', 'bestAction', 'prescriptiveFix', 'createdAt'
+      ])
+      && data.ownerId is string && data.ownerId.size() >= 6 && data.ownerId.size() <= 128
+      && data.ownerId == request.auth.uid && data.ownerId == userId
+      && data.scenarioTitle is string && data.scenarioTitle.size() >= 1 && data.scenarioTitle.size() <= 160
+      && data.heroCombo is string && data.heroCombo.size() >= 2 && data.heroCombo.size() <= 16
+      && data.wetness is string && data.wetness.size() >= 1 && data.wetness.size() <= 48
+      && data.evLossPercentOfPot is number && data.evLossPercentOfPot >= 0 && data.evLossPercentOfPot <= 500
+      && data.chosenAction is string && data.chosenAction.size() >= 1 && data.chosenAction.size() <= 80
+      && data.bestAction is string && data.bestAction.size() >= 1 && data.bestAction.size() <= 80
+      && data.prescriptiveFix is string && data.prescriptiveFix.size() >= 1 && data.prescriptiveFix.size() <= 600
+      && data.createdAt is timestamp;
+    }
+
+    // Match User Profile Collection
+    match /users/{userId} {
+      allow get: if isValidId(userId) && isOwner(userId);
+      allow list: if isVerifiedUser() && existing().uid == request.auth.uid;
+
+      allow create: if isValidId(userId)
+        && isOwner(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidId(userId)
+        && isOwner(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'displayName', 'photoURL', 'elo', 'masteryScore', 'totalDecisions',
+          'totalMistakes', 'roadmapDoneIds', 'categoryStats', 'updatedAt'
+        ]);
+
+      allow delete: if isValidId(userId) && isOwner(userId);
+
+      // Subcollection: SM-2 Items
+      match /sm2Items/{itemId} {
+        allow get: if isValidId(userId) && isValidId(itemId) && isOwner(userId);
+        allow list: if isVerifiedUser() && existing().ownerId == request.auth.uid;
+
+        allow create: if isValidId(userId) && isValidId(itemId)
+          && isOwner(userId)
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && isValidSM2Item(incoming(), userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+
+        allow update: if isValidId(userId) && isValidId(itemId)
+          && isOwner(userId)
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && isValidSM2Item(incoming(), userId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'title', 'category', 'prompt', 'explanation', 'rule',
+            'intervalDays', 'repetitions', 'easeFactor', 'nextReviewDate',
+            'reviewCount', 'updatedAt'
+          ]);
+
+        allow delete: if isValidId(userId) && isValidId(itemId) && isOwner(userId);
+      }
+
+      // Subcollection: Mistakes (>5% EV)
+      match /mistakes/{mistakeId} {
+        allow get: if isValidId(userId) && isValidId(mistakeId) && isOwner(userId);
+        allow list: if isVerifiedUser() && existing().ownerId == request.auth.uid;
+
+        allow create: if isValidId(userId) && isValidId(mistakeId)
+          && isOwner(userId)
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && isValidMistakeRecord(incoming(), userId)
+          && incoming().createdAt == request.time;
+
+        allow update: if false; // Mistakes are immutable audit logs
+        allow delete: if isValidId(userId) && isValidId(mistakeId) && isOwner(userId);
+      }
+    }
+  }
+}

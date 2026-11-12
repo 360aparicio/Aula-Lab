@@ -1,0 +1,6 @@
+{
+  "name": "Lab de pensamiento",
+  "description": "Herramienta profesional de poker con pensamiento ideal, análisis de rangos 13x13, árbol de decisiones interactivo y entrenador estratégico.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

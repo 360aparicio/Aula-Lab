@@ -1,0 +1,193 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Private 6-Max NLHE student profile, ELO rating, mastery metrics and career roadmap progress.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the user",
+          "minLength": 6,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Player display name",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "Optional avatar URL",
+          "maxLength": 512
+        },
+        "elo": {
+          "type": "number",
+          "description": "Current GTO trainer ELO score"
+        },
+        "masteryScore": {
+          "type": "number",
+          "description": "Overall mastery score from 0 to 100"
+        },
+        "totalDecisions": {
+          "type": "number",
+          "description": "Total recorded strategic decisions"
+        },
+        "totalMistakes": {
+          "type": "number",
+          "description": "Total mistakes above threshold"
+        },
+        "roadmapDoneIds": {
+          "type": "array",
+          "description": "Completed Career Roadmap milestone IDs (max 32)"
+        },
+        "categoryStats": {
+          "type": "object",
+          "description": "Map of category accuracy counters"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server last update timestamp"
+        }
+      },
+      "required": ["uid", "displayName", "elo", "masteryScore", "totalDecisions", "totalMistakes", "roadmapDoneIds", "categoryStats", "createdAt", "updatedAt"]
+    },
+    "SM2ItemRecord": {
+      "title": "SM2ItemRecord",
+      "description": "Individual SuperMemo SM-2 spaced repetition item belonging to a user.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "itemType": {
+          "type": "string",
+          "enum": ["concept", "hand", "scenario"],
+          "maxLength": 24
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "category": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "prompt": {
+          "type": "string",
+          "maxLength": 600
+        },
+        "explanation": {
+          "type": "string",
+          "maxLength": 1200
+        },
+        "rule": {
+          "type": "string",
+          "maxLength": 600
+        },
+        "intervalDays": {
+          "type": "number"
+        },
+        "repetitions": {
+          "type": "number"
+        },
+        "easeFactor": {
+          "type": "number"
+        },
+        "nextReviewDate": {
+          "type": "number"
+        },
+        "reviewCount": {
+          "type": "number"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["ownerId", "itemType", "title", "category", "prompt", "explanation", "rule", "intervalDays", "repetitions", "easeFactor", "nextReviewDate", "reviewCount", "createdAt", "updatedAt"]
+    },
+    "MistakeRecord": {
+      "title": "MistakeRecord",
+      "description": "Captured EV loss (>5% EV threshold) mistake with board texture and prescriptive fix.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "scenarioTitle": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "heroCombo": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 16
+        },
+        "wetness": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 48
+        },
+        "evLossPercentOfPot": {
+          "type": "number"
+        },
+        "chosenAction": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "bestAction": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "prescriptiveFix": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["ownerId", "scenarioTitle", "heroCombo", "wetness", "evLossPercentOfPot", "chosenAction", "bestAction", "prescriptiveFix", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Owner-isolated student profile with ELO, mastery score, category stats, and career roadmap milestones."
+    },
+    "/users/{userId}/sm2Items/{itemId}": {
+      "schema": { "$ref": "#/entities/SM2ItemRecord" },
+      "description": "User's private SuperMemo SM-2 spaced repetition deck items."
+    },
+    "/users/{userId}/mistakes/{mistakeId}": {
+      "schema": { "$ref": "#/entities/MistakeRecord" },
+      "description": "User's private captured >5% EV loss mistakes and board texture leaks."
+    }
+  }
+}
