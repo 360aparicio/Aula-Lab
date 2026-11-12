@@ -11,13 +11,14 @@
  * - Persistent attempt history log and scenario switcher
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { Card, cardId, cardToString, RANKS, SUIT_COLORS, SUIT_SYMBOLS, SUITS } from '../engine/cards';
-import { NodeStrategyResult, SolveResult } from '../engine/dcfr';
-import { Action, ActionNode, GameNode, PlayerRole } from '../engine/gameTree';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Card, cardId, RANKS, SUIT_COLORS, SUIT_SYMBOLS, SUITS } from '../engine/cards';
+import { DEFAULT_DCFR_CONFIG, NodeStrategyResult } from '../engine/dcfr';
+import { Action, ActionNode, buildGameTree, PlayerRole } from '../engine/gameTree';
 import { ConcreteHandWithWeight } from '../engine/range';
 import { createConcreteComboFromCards } from '../engine/combos';
-import { compareHands, evaluateCards } from '../engine/evaluator';
+import { evaluateCards } from '../engine/evaluator';
+import { AsyncSolverRunner } from '../engine/solverRunner';
 import { ActionEvBarChart } from './ActionEvBarChart';
 import {
   clearTrainingAttempts,
@@ -123,6 +124,21 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
   const villainRole: PlayerRole = heroRole === 'IP' ? 'OOP' : 'IP';
 
   const [currentNode, setCurrentNode] = useState<ActionNode>(activeNode);
+  const [practiceBoard, setPracticeBoard] = useState<Card[]>(boardCards);
+  const [practiceStreet, setPracticeStreet] = useState<'flop' | 'turn' | 'river'>(activeNode.street || 'flop');
+  const [practiceStrategies, setPracticeStrategies] = useState<Map<string, NodeStrategyResult> | undefined>(undefined);
+  const [isAdvancingStreet, setIsAdvancingStreet] = useState<boolean>(false);
+  const [streetLogs, setStreetLogs] = useState<
+    Array<{
+      street: 'flop' | 'turn' | 'river';
+      heroAction: string;
+      villainAction?: string;
+      gradeLabel: string;
+      evLossBB: number;
+      potAfter: number;
+    }>
+  >([]);
+  const [lastStepFeedback, setLastStepFeedback] = useState<TrainingFeedback | null>(null);
 
   // Dealt cards
   const [heroHand, setHeroHand] = useState<ConcreteHandWithWeight | null>(null);
@@ -147,7 +163,6 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
 
   // Learner Service state for weakness patterns tracking
   const [learnerSummary, setLearnerSummary] = useState(() => LearnerService.getInstance().getLearnerSummary());
-  const [showWeaknessModal, setShowWeaknessModal] = useState<boolean>(false);
 
   useEffect(() => {
     const handleLearnerUpdate = () => {
@@ -161,6 +176,24 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
   const heroCombos = heroRole === 'OOP' ? oopCombos : ipCombos;
   const villainCombos = heroRole === 'OOP' ? ipCombos : oopCombos;
 
+  const autoOpenedKeyRef = useRef<string | null>(null);
+
+  const resetHandProgressionState = (nodeToUse: ActionNode = activeNode) => {
+    const initialStreet = nodeToUse.street || (boardCards.length >= 5 ? 'river' : boardCards.length === 4 ? 'turn' : 'flop');
+    autoOpenedKeyRef.current = null;
+    setCurrentNode(nodeToUse);
+    setPracticeBoard(boardCards);
+    setPracticeStreet(initialStreet);
+    setPracticeStrategies(undefined);
+    setIsAdvancingStreet(false);
+    setStreetLogs([]);
+    setLastStepFeedback(null);
+    setFeedback(null);
+    setVillainActionMessage(null);
+    setIsHandOver(false);
+    setShowdownResult(null);
+  };
+
   // Deal a new random hand from range
   const startNewHand = () => {
     if (heroCombos.length === 0 || villainCombos.length === 0) return;
@@ -172,11 +205,7 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
 
     setHeroHand(dealtHero);
     setVillainHand(dealtVillain);
-    setCurrentNode(activeNode);
-    setFeedback(null);
-    setVillainActionMessage(null);
-    setIsHandOver(false);
-    setShowdownResult(null);
+    resetHandProgressionState(activeNode);
 
     if (propOnSelectHeroCards && dealtHero) {
       propOnSelectHeroCards(dealtHero.combo.card1, dealtHero.combo.card2);
@@ -192,18 +221,14 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
         setHeroHand(customHand);
         const dealtVillain = dealRandomVillainHand(villainCombos, customHand);
         setVillainHand(dealtVillain);
-        setCurrentNode(activeNode);
-        setFeedback(null);
-        setVillainActionMessage(null);
-        setIsHandOver(false);
-        setShowdownResult(null);
+        resetHandProgressionState(activeNode);
       } catch (e) {
         startNewHand();
       }
     } else {
       startNewHand();
     }
-  }, [propHeroCards, activeScenario.id, heroRole, heroCombos.length]);
+  }, [propHeroCards, activeScenario.id, heroRole, heroCombos.length, boardCards]);
 
   // Handle position changes
   const handleHeroPosChange = (newPos: TablePosition) => {
@@ -273,11 +298,7 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
       const dealtVillain = dealRandomVillainHand(villainCombos, customHandWithWeight);
       setVillainHand(dealtVillain);
 
-      setCurrentNode(activeNode);
-      setFeedback(null);
-      setVillainActionMessage(null);
-      setIsHandOver(false);
-      setShowdownResult(null);
+      resetHandProgressionState(activeNode);
       setIsCardPickerOpen(false);
     } catch (err) {
       console.error('Error creating hand:', err);
@@ -310,19 +331,52 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
     setPickerCard2(card);
   };
 
-  // Set of dead cards on board
-  const boardCardIds = useMemo(() => new Set(boardCards.map(c => c.id)), [boardCards]);
+  // Set of dead cards on board (including Turn/River dealt in live practice)
+  const boardCardIds = useMemo(() => new Set(practiceBoard.map(c => c.id)), [practiceBoard]);
 
-  // Handle user decision action
+  // Pick a random unused card from the deck avoiding board, hero, and villain cards
+  const pickRandomFreeCard = (
+    currentBoard: Card[],
+    hero: ConcreteHandWithWeight | null,
+    villain: ConcreteHandWithWeight | null
+  ): Card | null => {
+    const dead = new Set<number>(currentBoard.map(c => c.id));
+    if (hero) {
+      dead.add(hero.combo.card1.id);
+      dead.add(hero.combo.card2.id);
+    }
+    if (villain) {
+      dead.add(villain.combo.card1.id);
+      dead.add(villain.combo.card2.id);
+    }
+    const candidates: Card[] = [];
+    for (const rank of RANKS) {
+      for (const suit of SUITS) {
+        const id = cardId(rank, suit);
+        if (!dead.has(id)) {
+          candidates.push({ rank, suit, id });
+        }
+      }
+    }
+    if (candidates.length === 0) return null;
+    return candidates[Math.floor(Math.random() * candidates.length)];
+  };
+
+  const filterUnblockedCombos = (combos: ConcreteHandWithWeight[], board: Card[]): ConcreteHandWithWeight[] => {
+    const dead = new Set(board.map(c => c.id));
+    return combos.filter(c => !dead.has(c.combo.card1.id) && !dead.has(c.combo.card2.id));
+  };
+
+  // Handle user decision action with full Flop -> Turn -> River progression on correct non-fold decisions
   const handleHeroAction = (action: Action) => {
-    if (!heroHand || isHandOver) return;
+    if (!heroHand || isHandOver || isAdvancingStreet) return;
 
-    const activeStrat = nodeStrategies?.get(currentNode.id) || strategyResult;
+    const stratMap = practiceStrategies || nodeStrategies;
+    const activeStrat = stratMap?.get(currentNode.id) || (currentNode.id === activeNode.id ? strategyResult : undefined);
     if (!activeStrat) return;
 
     const actKey = action.actionKey || action.type;
     const fb = evaluateUserAction(actKey, heroHand, activeStrat, currentNode.pot);
-    setFeedback(fb);
 
     // Update stats
     const updatedStats: TrainerUserStats = {
@@ -345,10 +399,10 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
     const newAttempt: TrainingAttempt = {
       id: Math.random().toString(36).substring(7),
       timestamp: Date.now(),
-      scenarioTitle: activeScenario.title,
+      scenarioTitle: `${activeScenario.title} [${practiceStreet.toUpperCase()}]`,
       nodeHistory: currentNode.history,
       heroCombo: heroHand.combo.key,
-      board: boardCards.map(c => `${c.rank}${c.suit}`),
+      board: practiceBoard.map(c => `${c.rank}${c.suit}`),
       chosenAction: action.label || actKey,
       bestAction: fb.bestAction,
       grade: fb.grade,
@@ -367,9 +421,9 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
 
     // Captura automática de desviaciones críticas (>5% EV) en LearnerService
     LearnerService.getInstance().recordTrainerDecision({
-      scenarioTitle: activeScenario.title,
+      scenarioTitle: `${activeScenario.title} (${practiceStreet.toUpperCase()})`,
       heroCombo: heroHand.combo.key,
-      boardCards: boardCards,
+      boardCards: practiceBoard,
       heroPos,
       villainPos,
       potBB: Math.round((currentNode.pot / 2) * 10) / 10,
@@ -384,114 +438,326 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
       grade: fb.grade
     });
 
-    // Advance the game tree (resolving exact actionKey first to avoid colliding bet sizes)
+    const isFold = action.type === 'FOLD';
+    const isCorrectDecision = fb.grade === 'optimal' || fb.grade === 'acceptable';
+
+    // Advance the game tree (resolving exact actionKey first)
     const childKey = action.actionKey ||
       (currentNode.children[action.type] ? action.type :
        Object.keys(currentNode.children).find(k => k === action.type || k.startsWith(action.type)) ||
        Object.keys(currentNode.children)[0]);
     const nextNode = currentNode.children[childKey] || currentNode.children[action.type];
 
-    if (!nextNode) {
+    // If Fold or tree terminal fold -> end hand immediately
+    if (isFold || !nextNode || nextNode.nodeType === 'fold') {
+      setFeedback(fb);
+      setIsHandOver(true);
+      if (nextNode?.nodeType === 'fold') {
+        const isHeroWinner = nextNode.winner === heroRole;
+        setShowdownResult({
+          winner: isHeroWinner ? '¡Hero Gana el Bote!' : 'Villano Gana el Bote',
+          desc: isHeroWinner ? 'Villano foldeó ante tu presión.' : 'Te retiraste de la mano.'
+        });
+      }
+      return;
+    }
+
+    // If wrong decision (inaccuracy/mistake/blunder) -> stop and display error diagnosis
+    if (!isCorrectDecision) {
+      setFeedback(fb);
       setIsHandOver(true);
       return;
     }
 
-    if (nextNode.nodeType === 'fold') {
-      setIsHandOver(true);
-      const isHeroWinner = nextNode.winner === heroRole;
-      setShowdownResult({
-        winner: isHeroWinner ? 'Hero Wins Pot!' : 'Villain Wins Pot',
-        desc: isHeroWinner ? 'Villain folded to your pressure.' : 'You surrendered the pot.'
-      });
-      return;
-    }
+    // Correct non-fold decision! Log step & advance within street or to Turn / River
+    setLastStepFeedback(fb);
 
     if (nextNode.nodeType === 'showdown') {
-      setIsHandOver(true);
-      evaluateShowdown(nextNode.pot);
+      setStreetLogs(prev => [
+        ...prev,
+        {
+          street: practiceStreet,
+          heroAction: action.label,
+          gradeLabel: fb.gradeLabel,
+          evLossBB: fb.evLossBB,
+          potAfter: nextNode.pot
+        }
+      ]);
+      advanceToNextStreetOrShowdown(nextNode.pot, nextNode.stacks, fb);
       return;
     }
 
-    // Next is an action node
     if (nextNode.nodeType === 'action') {
       if (nextNode.player === heroRole) {
+        setFeedback(null);
         setCurrentNode(nextNode);
       } else {
-        handleVillainResponse(nextNode);
+        handleVillainResponse(nextNode, fb, action.label);
       }
     }
   };
 
-  // Bot plays GTO response
-  const handleVillainResponse = (villainNode: ActionNode) => {
-    if (!villainHand) return;
+  // Bot plays GTO response and progresses to next street if betting round closes
+  const handleVillainResponse = (
+    villainNode: ActionNode,
+    heroStepFb: TrainingFeedback | null,
+    heroActionLabel: string,
+    overrideStrategies?: Map<string, NodeStrategyResult>,
+    overrideStreet?: 'flop' | 'turn' | 'river',
+    overrideBoard?: Card[]
+  ) => {
+    const activeBoard = overrideBoard || practiceBoard;
+    const activeStr = overrideStreet || practiceStreet;
+    const activeStratMap = overrideStrategies || practiceStrategies || nodeStrategies;
 
-    const villainStrat = nodeStrategies?.get(villainNode.id);
+    if (!villainHand || !activeStratMap) {
+      if (heroStepFb) {
+        setFeedback(heroStepFb);
+        setIsHandOver(true);
+      }
+      return;
+    }
+
+    const villainStrat = activeStratMap.get(villainNode.id);
     if (!villainStrat) {
-      setIsHandOver(true);
+      if (heroStepFb) {
+        setFeedback(heroStepFb);
+        setIsHandOver(true);
+      }
       return;
     }
 
     const sampled = sampleVillainAction(villainStrat, villainHand);
     const chosenKey = sampled.actionKey;
-    const label = villainNode.actions.find(a => (a.actionKey && a.actionKey === chosenKey) || a.type === chosenKey)?.label || chosenKey;
+    const label =
+      villainNode.actions.find(a => (a.actionKey && a.actionKey === chosenKey) || a.type === chosenKey)?.label ||
+      chosenKey;
 
-    setVillainActionMessage(`Villano (${villainPos}) respondió: ${label} (${(sampled.frequency * 100).toFixed(1)}% freq)`);
+    setVillainActionMessage(
+      `Villano (${villainPos}) en ${activeStr.toUpperCase()}: ${label} (${(sampled.frequency * 100).toFixed(1)}% freq)`
+    );
 
-    const childKey = villainNode.children[chosenKey] ? chosenKey :
-      (Object.keys(villainNode.children).find(k => k === chosenKey || k.startsWith(chosenKey)) || Object.keys(villainNode.children)[0]);
+    const childKey = villainNode.children[chosenKey]
+      ? chosenKey
+      : Object.keys(villainNode.children).find(k => k === chosenKey || k.startsWith(chosenKey)) ||
+        Object.keys(villainNode.children)[0];
     const afterVillain = villainNode.children[childKey] || villainNode.children[chosenKey];
 
     if (!afterVillain) {
-      setIsHandOver(true);
+      if (heroStepFb) {
+        setFeedback(heroStepFb);
+        setIsHandOver(true);
+      }
       return;
     }
 
     if (afterVillain.nodeType === 'fold') {
+      if (heroStepFb) {
+        setStreetLogs(prev => [
+          ...prev,
+          {
+            street: activeStr,
+            heroAction: heroActionLabel,
+            villainAction: label,
+            gradeLabel: heroStepFb.gradeLabel,
+            evLossBB: heroStepFb.evLossBB,
+            potAfter: afterVillain.pot
+          }
+        ]);
+        setFeedback(heroStepFb);
+      }
       setIsHandOver(true);
       setShowdownResult({
-        winner: 'Hero Wins Pot!',
-        desc: 'Villain folded! You collect the pot.'
+        winner: '¡Hero Gana el Bote!',
+        desc: `Villano foldeó ante tu jugada correcta en ${activeStr.toUpperCase()}.`
       });
       return;
     }
 
     if (afterVillain.nodeType === 'showdown') {
-      setIsHandOver(true);
-      evaluateShowdown(afterVillain.pot);
+      if (heroStepFb) {
+        setStreetLogs(prev => [
+          ...prev,
+          {
+            street: activeStr,
+            heroAction: heroActionLabel,
+            villainAction: label,
+            gradeLabel: heroStepFb.gradeLabel,
+            evLossBB: heroStepFb.evLossBB,
+            potAfter: afterVillain.pot
+          }
+        ]);
+        advanceToNextStreetOrShowdown(afterVillain.pot, afterVillain.stacks, heroStepFb, activeStr, activeBoard);
+      } else {
+        setIsHandOver(true);
+        evaluateShowdown(afterVillain.pot, activeBoard);
+      }
       return;
     }
 
     if (afterVillain.nodeType === 'action') {
+      if (heroStepFb && heroActionLabel !== 'Inicio de Calle' && heroActionLabel !== 'Inicio Flop') {
+        setStreetLogs(prev => [
+          ...prev,
+          {
+            street: activeStr,
+            heroAction: heroActionLabel,
+            villainAction: label,
+            gradeLabel: heroStepFb.gradeLabel,
+            evLossBB: heroStepFb.evLossBB,
+            potAfter: afterVillain.pot
+          }
+        ]);
+      }
+      setFeedback(null);
       setCurrentNode(afterVillain);
     }
   };
 
-  const evaluateShowdown = (pot: number) => {
+  // Auto-open Flop when Hero is IP so OOP Villain acts first on Flop just like on Turn/River
+  useEffect(() => {
+    if (
+      isHandOver ||
+      isAdvancingStreet ||
+      feedback ||
+      practiceStrategies ||
+      !villainHand ||
+      !heroHand ||
+      currentNode.nodeType !== 'action' ||
+      currentNode.player === heroRole ||
+      !nodeStrategies?.get(currentNode.id)
+    ) {
+      return;
+    }
+    const openKey = `${activeScenario.id}_${currentNode.id}_${heroHand.combo.key}_${heroRole}`;
+    if (autoOpenedKeyRef.current === openKey) return;
+    autoOpenedKeyRef.current = openKey;
+    handleVillainResponse(currentNode, null, 'Inicio Flop');
+  }, [currentNode, heroRole, heroHand, villainHand, nodeStrategies, practiceStrategies, isHandOver, isAdvancingStreet, feedback, activeScenario.id]);
+
+  // Deal Turn or River and compute live GTO strategies for the new street
+  const advanceToNextStreetOrShowdown = (
+    potAfterStreet: number,
+    stacksAfterStreet: Record<PlayerRole, number>,
+    lastFb: TrainingFeedback,
+    streetJustFinished: 'flop' | 'turn' | 'river' = practiceStreet,
+    boardSoFar: Card[] = practiceBoard
+  ) => {
+    if (streetJustFinished === 'river') {
+      setFeedback(lastFb);
+      setIsHandOver(true);
+      evaluateShowdown(potAfterStreet, boardSoFar);
+      return;
+    }
+
+    // If either player is all-in before river, run out remaining community cards to 5 and go to Showdown
+    const minStack = Math.min(stacksAfterStreet.OOP, stacksAfterStreet.IP);
+    if (minStack <= 0) {
+      let runoutBoard = [...boardSoFar];
+      while (runoutBoard.length < 5) {
+        const nextCard = pickRandomFreeCard(runoutBoard, heroHand, villainHand);
+        if (!nextCard) break;
+        runoutBoard = [...runoutBoard, nextCard];
+      }
+      setPracticeBoard(runoutBoard);
+      setPracticeStreet('river');
+      setFeedback(lastFb);
+      setIsHandOver(true);
+      evaluateShowdown(potAfterStreet, runoutBoard);
+      return;
+    }
+
+    const nextStreet: 'turn' | 'river' = streetJustFinished === 'flop' ? 'turn' : 'river';
+    const nextCard = pickRandomFreeCard(boardSoFar, heroHand, villainHand);
+    if (!nextCard) {
+      setFeedback(lastFb);
+      setIsHandOver(true);
+      evaluateShowdown(potAfterStreet, boardSoFar);
+      return;
+    }
+
+    const nextBoard = [...boardSoFar, nextCard];
+    const nextTree = buildGameTree({
+      startingPot: potAfterStreet,
+      effectiveStack: minStack,
+      betSizes: activeScenario.config.betSizes,
+      raiseSizes: activeScenario.config.raiseSizes,
+      allowAllIn: activeScenario.config.allowAllIn,
+      maxRaises: activeScenario.config.maxRaises,
+      street: nextStreet
+    });
+
+    const filteredOop = filterUnblockedCombos(oopCombos, nextBoard);
+    const filteredIp = filterUnblockedCombos(ipCombos, nextBoard);
+
+    if (filteredOop.length === 0 || filteredIp.length === 0) {
+      setPracticeBoard(nextBoard);
+      setPracticeStreet(nextStreet);
+      setFeedback(lastFb);
+      setIsHandOver(true);
+      evaluateShowdown(potAfterStreet, nextBoard);
+      return;
+    }
+
+    setIsAdvancingStreet(true);
+    setVillainActionMessage(
+      `✓ ${streetJustFinished.toUpperCase()} superado (${lastFb.gradeLabel}). Repartiendo ${nextStreet.toUpperCase()}: ${nextCard.rank}${SUIT_SYMBOLS[nextCard.suit]}...`
+    );
+
+    const runner = new AsyncSolverRunner();
+    runner.init(nextTree, nextBoard, filteredOop, filteredIp, {
+      ...DEFAULT_DCFR_CONFIG,
+      iterations: 120
+    });
+    runner.setCallbacks({
+      onComplete: (res) => {
+        setPracticeBoard(nextBoard);
+        setPracticeStreet(nextStreet);
+        setPracticeStrategies(res.nodeStrategies);
+        setIsAdvancingStreet(false);
+
+        if (nextTree.player === heroRole) {
+          setFeedback(null);
+          setCurrentNode(nextTree);
+        } else {
+          // OOP Villain acts first on the new street when Hero is IP
+          handleVillainResponse(nextTree, lastFb, 'Inicio de Calle', res.nodeStrategies, nextStreet, nextBoard);
+        }
+      },
+      onError: () => {
+        setIsAdvancingStreet(false);
+        setFeedback(lastFb);
+        setIsHandOver(true);
+      }
+    });
+    runner.start();
+  };
+
+  const evaluateShowdown = (pot: number, boardForEval: Card[] = practiceBoard) => {
     if (!heroHand || !villainHand) return;
 
     const heroCards = [heroHand.combo.card1, heroHand.combo.card2];
     const villainCards = [villainHand.combo.card1, villainHand.combo.card2];
 
-    const heroEval = evaluateCards([...heroCards, ...boardCards]);
-    const villainEval = evaluateCards([...villainCards, ...boardCards]);
+    const heroEval = evaluateCards([...heroCards, ...boardForEval]);
+    const villainEval = evaluateCards([...villainCards, ...boardForEval]);
 
     const cmp = heroEval.score - villainEval.score;
 
     if (cmp > 0) {
       setShowdownResult({
-        winner: 'Hero Wins Showdown!',
-        desc: `Hero (${heroEval.description}) beats Villain (${villainEval.description}) for ${pot} chips.`
+        winner: '¡Hero Gana en el Showdown!',
+        desc: `Hero (${heroEval.description}) vence a Villano (${villainEval.description}) por ${pot} fichas.`
       });
     } else if (cmp < 0) {
       setShowdownResult({
-        winner: 'Villain Wins Showdown',
-        desc: `Villain (${villainEval.description}) beats Hero (${heroEval.description}) for ${pot} chips.`
+        winner: 'Villano Gana en el Showdown',
+        desc: `Villano (${villainEval.description}) vence a Hero (${heroEval.description}) por ${pot} fichas.`
       });
     } else {
       setShowdownResult({
-        winner: 'Split Pot (Tie)',
-        desc: `Both players hold identical five-card strength: ${heroEval.description}.`
+        winner: 'Bote Dividido (Empate)',
+        desc: `Ambos jugadores empatan con ${heroEval.description}.`
       });
     }
   };
@@ -965,18 +1231,73 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
               </div>
             </div>
 
-            {/* Center: Community Board Cards & Alerts */}
+            {/* Center: Community Board Cards, Street Progression Stepper & Alerts */}
             <div className="relative z-10 flex flex-col items-center justify-center my-6 gap-3">
+              {/* Street Stepper Pill */}
+              <div className="flex items-center gap-1.5 text-[11px] font-mono">
+                {(['flop', 'turn', 'river'] as const).map((st, idx) => {
+                  const active = practiceStreet === st;
+                  const passed =
+                    (st === 'flop' && (practiceStreet === 'turn' || practiceStreet === 'river')) ||
+                    (st === 'turn' && practiceStreet === 'river');
+                  return (
+                    <React.Fragment key={st}>
+                      <span
+                        className={`px-2.5 py-0.5 rounded-full border font-bold uppercase ${
+                          active
+                            ? 'bg-blue-600/30 border-blue-400 text-blue-200 shadow-xs'
+                            : passed
+                            ? 'bg-emerald-950/60 border-emerald-700 text-emerald-300'
+                            : 'bg-neutral-900 border-neutral-800 text-neutral-500'
+                        }`}
+                      >
+                        {passed ? `✓ ${st}` : st}
+                      </span>
+                      {idx < 2 && <span className="text-neutral-600">➔</span>}
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+
               <div className="text-xs font-semibold uppercase tracking-wider text-neutral-400 font-mono">
-                Community Board ({boardCards.length} Cards)
+                Community Board ({practiceStreet.toUpperCase()} · {practiceBoard.length} Cartas)
               </div>
               <div className="flex items-center gap-2">
-                {boardCards.map(c => renderCard(c, 'md'))}
+                {practiceBoard.map(c => renderCard(c, 'md'))}
               </div>
+
+              {/* Street History Breadcrumbs */}
+              {streetLogs.length > 0 && (
+                <div className="flex flex-wrap items-center justify-center gap-2 max-w-2xl">
+                  {streetLogs.map((log, i) => (
+                    <span
+                      key={i}
+                      className="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-neutral-900/90 border border-emerald-800/50 text-emerald-300"
+                    >
+                      {log.street.toUpperCase()}: {log.heroAction} ({log.gradeLabel})
+                      {log.villainAction ? ` → Villano: ${log.villainAction}` : ''}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Advancing street spinner or positive step feedback */}
+              {isAdvancingStreet && (
+                <div className="mt-1 px-3.5 py-1.5 bg-blue-950/80 border border-blue-500/60 rounded-lg text-xs font-mono text-blue-200 flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full border-2 border-blue-400 border-t-transparent animate-spin" />
+                  <span>Calculando equilibrio GTO para la siguiente calle...</span>
+                </div>
+              )}
+
+              {lastStepFeedback && !feedback && !isAdvancingStreet && (
+                <div className="px-3 py-1 bg-emerald-950/70 border border-emerald-700/60 rounded-lg text-[11px] font-mono text-emerald-300">
+                  ✓ Decisión anterior correcta: {lastStepFeedback.chosenAction} ({lastStepFeedback.gradeLabel}) — Continúa jugando en {practiceStreet.toUpperCase()}
+                </div>
+              )}
 
               {/* Bot notification / showdown announcement */}
               {villainActionMessage && !showdownResult && (
-                <div className="mt-2 px-3 py-1 bg-neutral-900/90 border border-neutral-700 rounded-lg text-xs font-mono text-cyan-300 shadow-sm">
+                <div className="mt-1 px-3 py-1 bg-neutral-900/90 border border-neutral-700 rounded-lg text-xs font-mono text-cyan-300 shadow-sm">
                   {villainActionMessage}
                 </div>
               )}
@@ -1009,7 +1330,7 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
                   <div className="text-xs text-neutral-300">{showdownResult.desc}</div>
                   {villainHand && (
                     <div className="pt-2 flex items-center justify-center gap-2 text-xs font-mono text-neutral-400 border-t border-neutral-800">
-                      <span>Villain hand:</span>
+                      <span>Mano del Villano:</span>
                       <span className="text-white font-bold">{villainHand.combo.canonicalName}</span>
                       <span>({villainHand.combo.key})</span>
                     </div>
@@ -1057,27 +1378,42 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
 
               {/* Action Decision Controls */}
               {!feedback && !isHandOver ? (
-                <div className="flex items-center gap-2 flex-wrap justify-end">
-                  {currentNode.actions.map(act => {
-                    const isFold = act.type === 'FOLD';
-                    const isPassive = act.type === 'CHECK' || act.type === 'CALL';
+                (() => {
+                  const stratMap = practiceStrategies || nodeStrategies;
+                  const readyStrat =
+                    stratMap?.get(currentNode.id) || (currentNode.id === activeNode.id ? strategyResult : undefined);
+                  if (isAdvancingStreet || !readyStrat) {
                     return (
-                      <button
-                        key={act.actionKey || `${act.type}_${act.amount}`}
-                        onClick={() => handleHeroAction(act)}
-                        className={`px-4 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-transform active:scale-95 shadow-sm cursor-pointer ${
-                          isFold
-                            ? 'bg-neutral-800 hover:bg-red-950 hover:text-red-300 text-neutral-300 border border-neutral-700'
-                            : isPassive
-                            ? 'bg-blue-600 hover:bg-blue-500 text-white'
-                            : 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                        }`}
-                      >
-                        {act.label}
-                      </button>
+                      <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-xs font-mono text-neutral-400">
+                        <div className="w-3 h-3 rounded-full border-2 border-blue-400 border-t-transparent animate-spin" />
+                        <span>Sincronizando estrategia GTO...</span>
+                      </div>
                     );
-                  })}
-                </div>
+                  }
+                  return (
+                    <div className="flex items-center gap-2 flex-wrap justify-end">
+                      {currentNode.actions.map(act => {
+                        const isFold = act.type === 'FOLD';
+                        const isPassive = act.type === 'CHECK' || act.type === 'CALL';
+                        return (
+                          <button
+                            key={act.actionKey || `${act.type}_${act.amount}`}
+                            onClick={() => handleHeroAction(act)}
+                            className={`px-4 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-transform active:scale-95 shadow-sm cursor-pointer ${
+                              isFold
+                                ? 'bg-neutral-800 hover:bg-red-950 hover:text-red-300 text-neutral-300 border border-neutral-700'
+                                : isPassive
+                                ? 'bg-blue-600 hover:bg-blue-500 text-white'
+                                : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                            }`}
+                          >
+                            {act.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })()
               ) : (
                 /* Feedback & Next Hand Strip */
                 <div className="flex-1 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-3.5 rounded-xl border bg-neutral-900/90 backdrop-blur-xs">
@@ -1150,9 +1486,9 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
           {/* Real-Time Action EV Bar Chart comparing available actions against GTO strategy */}
           <ActionEvBarChart
             currentNode={currentNode}
-            strategyResult={nodeStrategies?.get(currentNode.id) || strategyResult}
+            strategyResult={(practiceStrategies || nodeStrategies)?.get(currentNode.id) || (currentNode.id === activeNode.id ? strategyResult : undefined)}
             heroHand={heroHand}
-            chosenActionType={feedback?.chosenAction}
+            chosenActionType={(feedback || lastStepFeedback)?.chosenAction}
             potSize={currentNode.pot}
           />
         </div>

@@ -16,7 +16,8 @@ import {
   saveCustomScenario
 } from '../storage/scenarioStore';
 import { PrebuiltScenario } from '../trainer/prebuiltScenarios';
-import { Download, Upload, Plus, Trash2, Play, BookOpen, Layers } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { Download, Upload, Trash2, Play, Layers, Lock } from 'lucide-react';
 
 interface ScenarioManagerProps {
   onLoadScenario: (scenario: PrebuiltScenario) => void;
@@ -27,6 +28,7 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({
   onLoadScenario,
   onTrainScenario
 }) => {
+  const { isAdmin } = useAuth();
   const [scenarios, setScenarios] = useState<SavedScenarioRecord[]>(loadAllScenarios());
   const [importStatus, setImportStatus] = useState<string | null>(null);
 
@@ -78,20 +80,27 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <label className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg text-xs font-semibold cursor-pointer transition-colors">
-            <Upload className="w-3.5 h-3.5" />
-            <span>Import JSON</span>
-            <input
-              type="file"
-              accept=".json"
-              onChange={handleImport}
-              className="hidden"
-            />
-          </label>
+          {isAdmin ? (
+            <label className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg text-xs font-semibold cursor-pointer transition-colors">
+              <Upload className="w-3.5 h-3.5" />
+              <span>Import JSON</span>
+              <input
+                type="file"
+                accept=".json"
+                onChange={handleImport}
+                className="hidden"
+              />
+            </label>
+          ) : (
+            <span className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-950 border border-neutral-800 text-neutral-400 rounded-lg text-[11px] font-mono">
+              <Lock className="w-3 h-3 text-neutral-500" />
+              <span>Biblioteca Uso (Solo Admin modifica)</span>
+            </span>
+          )}
 
           <button
             onClick={handleExport}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg text-xs font-semibold transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer"
           >
             <Download className="w-3.5 h-3.5" />
             <span>Export Library</span>
@@ -117,10 +126,10 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({
                 <span className="text-[10px] uppercase font-mono font-bold px-2 py-0.5 rounded bg-neutral-800 text-emerald-400">
                   {sc.street}
                 </span>
-                {sc.isCustom && (
+                {sc.isCustom && isAdmin && (
                   <button
                     onClick={() => handleDelete(sc.id)}
-                    className="text-neutral-500 hover:text-red-400 transition-colors p-1"
+                    className="text-neutral-500 hover:text-red-400 transition-colors p-1 cursor-pointer"
                     title="Delete custom scenario"
                   >
                     <Trash2 className="w-3.5 h-3.5" />

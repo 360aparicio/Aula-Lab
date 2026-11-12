@@ -11,7 +11,7 @@ import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GoogleGenAI } from '@google/genai';
-import { optionalAuth, requireAuth, type AuthenticatedRequest } from './src/server/authMiddleware.ts';
+import { optionalAuth, requireAuth, requireAdmin, type AuthenticatedRequest } from './src/server/authMiddleware.ts';
 import {
   getSolverMetaState,
   mergeInternetSolverUpdates,
@@ -73,8 +73,8 @@ async function startServer() {
     res.json(updated);
   });
 
-  // Live Internet + Modern Solver Sync via Gemini Google Search Grounding
-  app.post('/api/solver/sync-internet', optionalAuth, async (req, res) => {
+  // Live Internet + Modern Solver Sync via Gemini Google Search Grounding (Admin Only)
+  app.post('/api/solver/sync-internet', requireAdmin, async (req, res) => {
     const topic = typeof req.body?.topic === 'string' && req.body.topic.trim()
       ? req.body.topic.trim().slice(0, 140)
       : 'No Limit Holdem 6-max GTO solver C-bet sizing frequencies 3-bet pots exploitative population tendencies 2025';

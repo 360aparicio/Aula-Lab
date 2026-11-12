@@ -26,6 +26,13 @@ import {
 } from '../engine/spacedRepetition';
 import { CustomFlashcardManager, SM2Flashcard } from './CustomFlashcardManager';
 import { ProgressDashboard } from './ProgressDashboard';
+import { EvaluationModule } from './EvaluationModule';
+import {
+  ACADEMY_SCENARIO_BANK,
+  getNextAcademyScenario,
+  type AcademyCategory,
+  type QuizScenario
+} from '../engine/academySpots';
 import {
   GraduationCap,
   Award,
@@ -42,383 +49,11 @@ import {
   Target,
   Clock,
   Layers,
-  History
+  History,
+  ClipboardCheck
 } from 'lucide-react';
 
-export type AcademyCategory =
-  | 'dry_flop'
-  | 'wet_flop'
-  | 'monotone_flop'
-  | 'paired_flop'
-  | 'three_bet_pot'
-  | 'squeeze'
-  | 'rol'
-  | 'open_raise'
-  | 'four_bet'
-  | 'limp_reraise'
-  | 'blind_defense'
-  | 'bluff_catch';
-
-interface QuizScenario {
-  id: string;
-  category: AcademyCategory;
-  categoryName: string;
-  title: string;
-  heroCards: [Card, Card];
-  board: Card[];
-  potBB: number;
-  heroPos: string;
-  villainPos: string;
-  villainAction: string;
-  correctAction: string;
-  correctSizing?: string;
-  gtoFrequency: number;
-  options: { label: string; action: string; isCorrect: boolean; evLossPct: number }[];
-  explanationDummies: string;
-  leakWarning: string;
-}
-
-const GENERATE_SCENARIO = (cat: AcademyCategory): QuizScenario => {
-  if (cat === 'dry_flop') {
-    return {
-      id: `dry-${Date.now()}`,
-      category: 'dry_flop',
-      categoryName: 'Flop Seco (Dry)',
-      title: 'C-Bet en Flop Seco K-high (BTN vs BB)',
-      heroCards: [
-        { rank: 'A', suit: 's', id: cardId('A', 's') },
-        { rank: 'J', suit: 'h', id: cardId('J', 'h') }
-      ],
-      board: [
-        { rank: 'K', suit: 'd', id: cardId('K', 'd') },
-        { rank: '7', suit: 'c', id: cardId('7', 'c') },
-        { rank: '2', suit: 's', id: cardId('2', 's') }
-      ],
-      potBB: 6.5,
-      heroPos: 'BTN',
-      villainPos: 'BB',
-      villainAction: 'BB Checks',
-      correctAction: 'BET 33%',
-      correctSizing: '2.1 BB',
-      gtoFrequency: 82,
-      options: [
-        { label: 'Bet 33% Pot (2.1 BB)', action: 'BET_33', isCorrect: true, evLossPct: 0 },
-        { label: 'Check Behind', action: 'CHECK', isCorrect: false, evLossPct: 3.8 },
-        { label: 'Bet 75% Pot (4.9 BB)', action: 'BET_75', isCorrect: false, evLossPct: 6.2 }
-      ],
-      explanationDummies: 'En flops ultra secos y desconectados con una carta alta (como K72r), Hero tiene una ventaja enorme de cartas altas (overcards y Ases). Una apuesta diminuta de 1/3 del bote gana fichas de inmediato forzando a BB a foldear el 60% de sus manos basura.',
-      leakWarning: 'Fuga Común: Apostar demasiado grande (75%+) en mesas secas solo consigue aislarte contra manos mejores y arriesga fichas innecesarias.'
-    };
-  } else if (cat === 'wet_flop') {
-    return {
-      id: `wet-${Date.now()}`,
-      category: 'wet_flop',
-      categoryName: 'Flop Coordinado (Wet)',
-      title: 'Protección en Flop Dinámico (CO vs BTN)',
-      heroCards: [
-        { rank: 'T', suit: 's', id: cardId('T', 's') },
-        { rank: 'T', suit: 'h', id: cardId('T', 'h') }
-      ],
-      board: [
-        { rank: '9', suit: 's', id: cardId('9', 's') },
-        { rank: '8', suit: 's', id: cardId('8', 's') },
-        { rank: '6', suit: 'd', id: cardId('6', 'd') }
-      ],
-      potBB: 7.0,
-      heroPos: 'CO',
-      villainPos: 'BTN',
-      villainAction: 'Hero actúa primero (OOP)',
-      correctAction: 'BET 66% - 75%',
-      correctSizing: '5.0 BB',
-      gtoFrequency: 68,
-      options: [
-        { label: 'Bet 75% Pot (5.2 BB)', action: 'BET_75', isCorrect: true, evLossPct: 0 },
-        { label: 'Bet 33% Pot (2.3 BB)', action: 'BET_33', isCorrect: false, evLossPct: 7.4 },
-        { label: 'Check', action: 'CHECK', isCorrect: false, evLossPct: 5.1 }
-      ],
-      explanationDummies: 'Esta mesa está llena de proyectos de escalera y color. Si apuestas pequeño (33%), le das precio regalado a cualquier proyecto para que te supere en el turn. Apuesta fuerte (75%) para cobrarles caro.',
-      leakWarning: 'Fuga Común: Hacer C-bet pequeña por inercia en boards mojados regala la equity al rival.'
-    };
-  } else if (cat === 'monotone_flop') {
-    return {
-      id: `mono-${Date.now()}`,
-      category: 'monotone_flop',
-      categoryName: 'Flop Monótono (3 del mismo palo)',
-      title: 'Navegación en Flop de 1 Solo Palo (UTG vs BB)',
-      heroCards: [
-        { rank: 'K', suit: 's', id: cardId('K', 's') },
-        { rank: 'K', suit: 'd', id: cardId('K', 'd') }
-      ],
-      board: [
-        { rank: 'Q', suit: 'h', id: cardId('Q', 'h') },
-        { rank: '9', suit: 'h', id: cardId('9', 'h') },
-        { rank: '4', suit: 'h', id: cardId('4', 'h') }
-      ],
-      potBB: 6.0,
-      heroPos: 'UTG',
-      villainPos: 'BB',
-      villainAction: 'BB Checks',
-      correctAction: 'CHECK',
-      gtoFrequency: 75,
-      options: [
-        { label: 'Check Behind (Control de Bote)', action: 'CHECK', isCorrect: true, evLossPct: 0 },
-        { label: 'Bet 33% Pot (2.0 BB)', action: 'BET_33', isCorrect: false, evLossPct: 4.2 },
-        { label: 'Bet 75% Pot (4.5 BB)', action: 'BET_75', isCorrect: false, evLossPct: 11.5 }
-      ],
-      explanationDummies: 'Aunque tienes una gran pareja de Reyes, ¡no tienes ningún corazón en la mano (sin blocker)! La BB defendió muchas combinaciones suited de corazones. Pasar detrás previene que te comas un check-raise desastroso.',
-      leakWarning: 'Fuga Común: Enamorarse de Overpairs en mesas monótonas sin blocker del palo de triunfo.'
-    };
-  } else if (cat === 'paired_flop') {
-    return {
-      id: `pair-${Date.now()}`,
-      category: 'paired_flop',
-      categoryName: 'Flop Emparejado',
-      title: 'C-Bet en Flop Emparejado J-J-4 (CO vs BB)',
-      heroCards: [
-        { rank: 'A', suit: 'c', id: cardId('A', 'c') },
-        { rank: 'Q', suit: 'd', id: cardId('Q', 'd') }
-      ],
-      board: [
-        { rank: 'J', suit: 's', id: cardId('J', 's') },
-        { rank: 'J', suit: 'h', id: cardId('J', 'h') },
-        { rank: '4', suit: 'd', id: cardId('4', 'd') }
-      ],
-      potBB: 5.5,
-      heroPos: 'CO',
-      villainPos: 'BB',
-      villainAction: 'BB Checks',
-      correctAction: 'BET 33%',
-      correctSizing: '1.8 BB',
-      gtoFrequency: 85,
-      options: [
-        { label: 'Bet 33% Pot (1.8 BB)', action: 'BET_33', isCorrect: true, evLossPct: 0 },
-        { label: 'Check Behind', action: 'CHECK', isCorrect: false, evLossPct: 4.1 },
-        { label: 'Bet 100% Pot (5.5 BB)', action: 'BET_100', isCorrect: false, evLossPct: 9.3 }
-      ],
-      explanationDummies: 'Al haber dos Jotas en la mesa, es matemáticamente casi imposible que el rival tenga un trío (solo quedan 2 Jotas en el mazo). Una apuesta barata de 1/3 barre todas las manos que no conectaron nada.',
-      leakWarning: 'Fuga Común: Creer que sin pareja no se puede apostar en mesas emparejadas.'
-    };
-  } else if (cat === 'three_bet_pot') {
-    return {
-      id: `3b-${Date.now()}`,
-      category: 'three_bet_pot',
-      categoryName: 'Botes 3-Bet',
-      title: 'C-Bet en Bote 3-Bet (BB vs BTN)',
-      heroCards: [
-        { rank: 'A', suit: 's', id: cardId('A', 's') },
-        { rank: 'K', suit: 's', id: cardId('K', 's') }
-      ],
-      board: [
-        { rank: 'A', suit: 'd', id: cardId('A', 'd') },
-        { rank: '7', suit: 'c', id: cardId('7', 'c') },
-        { rank: '3', suit: 's', id: cardId('3', 's') }
-      ],
-      potBB: 20.0,
-      heroPos: 'BB',
-      villainPos: 'BTN',
-      villainAction: 'Hero 3-Beteó preflop y llega al flop',
-      correctAction: 'BET 33%',
-      correctSizing: '6.6 BB',
-      gtoFrequency: 78,
-      options: [
-        { label: 'Bet 33% Pot (6.6 BB)', action: 'BET_33', isCorrect: true, evLossPct: 0 },
-        { label: 'Bet 75% Pot (15.0 BB)', action: 'BET_75', isCorrect: false, evLossPct: 5.8 },
-        { label: 'Check', action: 'CHECK', isCorrect: false, evLossPct: 6.9 }
-      ],
-      explanationDummies: 'En botes 3-Bet el SPR ya es bajo (~4.5). No necesitas apostar grande para construir el bote. Una C-bet pequeña de 33% mantiene el rango rival amplio y prepara el all-in para el turn/river.',
-      leakWarning: 'Fuga Común: Apostar tamaños gigantescos en botes 3-Bet, aislando tu mano contra las nuts rivales.'
-    };
-  } else if (cat === 'squeeze') {
-    return {
-      id: `sqz-${Date.now()}`,
-      category: 'squeeze',
-      categoryName: 'Squeeze Spots',
-      title: 'Oportunidad de Squeeze Preflop (SB vs CO open + BTN call)',
-      heroCards: [
-        { rank: 'A', suit: 'h', id: cardId('A', 'h') },
-        { rank: 'Q', suit: 's', id: cardId('Q', 's') }
-      ],
-      board: [],
-      potBB: 5.5,
-      heroPos: 'SB',
-      villainPos: 'CO + BTN',
-      villainAction: 'CO abre 2.5 BB, BTN paga 2.5 BB',
-      correctAction: 'SQUEEZE a 12-14 BB',
-      correctSizing: '13 BB',
-      gtoFrequency: 84,
-      options: [
-        { label: 'Squeeze Raise a 13 BB', action: 'RAISE_13', isCorrect: true, evLossPct: 0 },
-        { label: 'Flat Call 2.5 BB', action: 'CALL', isCorrect: false, evLossPct: 8.2 },
-        { label: 'Fold', action: 'FOLD', isCorrect: false, evLossPct: 14.5 }
-      ],
-      explanationDummies: 'El bote tiene 5.5 BB de dinero muerto. Si pagas, jugarás un bote multiway fuera de posición sin la iniciativa. Un Squeeze potente a 13 BB hace foldear al CO y al BTN más del 70% de las veces, llevándote 5.5 BB limpias sin riesgo postflop.',
-      leakWarning: 'Fuga Común: Solo hacer squeeze con AA/KK y pagar con manos broadway fuertes como AQo o AJs.'
-    };
-  } else if (cat === 'rol') {
-    return {
-      id: `rol-${Date.now()}`,
-      category: 'rol',
-      categoryName: 'ROL (Raise Over Limpers)',
-      title: 'Castigo al Limper (BTN vs UTG Fish Limp)',
-      heroCards: [
-        { rank: 'A', suit: 'd', id: cardId('A', 'd') },
-        { rank: 'J', suit: 's', id: cardId('J', 's') }
-      ],
-      board: [],
-      potBB: 2.5,
-      heroPos: 'BTN',
-      villainPos: 'UTG (Fish)',
-      villainAction: 'UTG paga 1 BB (Open Limp)',
-      correctAction: 'ROL Raise a 4.0 - 4.5 BB',
-      correctSizing: '4.5 BB',
-      gtoFrequency: 90,
-      options: [
-        { label: 'ROL Raise a 4.5 BB', action: 'RAISE_45', isCorrect: true, evLossPct: 0 },
-        { label: 'Over-Limp (Completar 1 BB)', action: 'CALL', isCorrect: false, evLossPct: 7.9 },
-        { label: 'Fold', action: 'FOLD', isCorrect: false, evLossPct: 12.0 }
-      ],
-      explanationDummies: 'El limp de un rival pasivo es un cartel de "tengo una mano débil". Como estás en el BTN, debes castigarlo subiendo a 4 BB (3 BB estándar + 1 BB por cada limper) para aislarte en posición contra el jugador más débil.',
-      leakWarning: 'Fuga Común: Limpear detrás con manos buenas por pereza de jugar botes subidos.'
-    };
-  } else if (cat === 'open_raise') {
-    return {
-      id: `rfi-${Date.now()}`,
-      category: 'open_raise',
-      categoryName: 'Open Raise (RFI)',
-      title: 'Apertura Preflop desde el Cutoff (CO)',
-      heroCards: [
-        { rank: 'K', suit: 's', id: cardId('K', 's') },
-        { rank: 'J', suit: 's', id: cardId('J', 's') }
-      ],
-      board: [],
-      potBB: 1.5,
-      heroPos: 'CO',
-      villainPos: 'BTN + Blinds',
-      villainAction: 'Mesa foldea hasta Hero en CO',
-      correctAction: 'Open Raise a 2.5 BB',
-      correctSizing: '2.5 BB',
-      gtoFrequency: 100,
-      options: [
-        { label: 'Open Raise a 2.5 BB', action: 'RAISE_25', isCorrect: true, evLossPct: 0 },
-        { label: 'Open Limp 1 BB', action: 'CALL', isCorrect: false, evLossPct: 11.2 },
-        { label: 'Fold', action: 'FOLD', isCorrect: false, evLossPct: 8.5 }
-      ],
-      explanationDummies: 'KJs es una mano broadway suited premium para abrir desde el Cutoff. Open-limpear regala la iniciativa y deja ver el flop gratis a las ciegas.',
-      leakWarning: 'Fuga Común: Limpear en late position.'
-    };
-  } else if (cat === 'four_bet') {
-    return {
-      id: `4b-${Date.now()}`,
-      category: 'four_bet',
-      categoryName: '4-Bet & Cold 4-Bet',
-      title: 'Respuesta ante 3-Bet Agresivo (BTN vs SB 3-Bet)',
-      heroCards: [
-        { rank: 'A', suit: 's', id: cardId('A', 's') },
-        { rank: '5', suit: 's', id: cardId('5', 's') }
-      ],
-      board: [],
-      potBB: 13.5,
-      heroPos: 'BTN',
-      villainPos: 'SB',
-      villainAction: 'Hero abrió 2.5 BB, SB 3-betea a 11 BB',
-      correctAction: '4-Bet Bluff a 23 BB',
-      correctSizing: '23 BB',
-      gtoFrequency: 65,
-      options: [
-        { label: '4-Bet Bluff a 23 BB', action: 'RAISE_23', isCorrect: true, evLossPct: 0 },
-        { label: 'Flat Call 11 BB', action: 'CALL', isCorrect: false, evLossPct: 5.4 },
-        { label: 'Fold', action: 'FOLD', isCorrect: false, evLossPct: 4.8 }
-      ],
-      explanationDummies: 'A5s es el rey de los 4-bet faroles: bloquea los Ases monstruo del rival (AA, AK) y retiene gran jugabilidad postflop gracias al proyecto de color al As y escaleras por abajo (Wheel).',
-      leakWarning: 'Fuga Común: Solo hacer 4-Bet con AA/KK, volviéndote completamente predecible.'
-    };
-  } else if (cat === 'limp_reraise') {
-    return {
-      id: `lrr-${Date.now()}`,
-      category: 'limp_reraise',
-      categoryName: 'Limp Re-Raise (Trampa BvB)',
-      title: 'Trampa Blind vs Blind (SB vs BB Agresiva)',
-      heroCards: [
-        { rank: 'A', suit: 's', id: cardId('A', 's') },
-        { rank: 'A', suit: 'h', id: cardId('A', 'h') }
-      ],
-      board: [],
-      potBB: 5.0,
-      heroPos: 'SB',
-      villainPos: 'BB',
-      villainAction: 'Hero completa 1 BB en SB, BB sube agresivo a 4 BB',
-      correctAction: 'Limp Re-Raise (3-Bet) a 12-14 BB',
-      correctSizing: '13 BB',
-      gtoFrequency: 85,
-      options: [
-        { label: 'Limp Re-Raise a 13 BB', action: 'RAISE_13', isCorrect: true, evLossPct: 0 },
-        { label: 'Solo Call 4 BB', action: 'CALL', isCorrect: false, evLossPct: 6.2 },
-        { label: 'Fold', action: 'FOLD', isCorrect: false, evLossPct: 45.0 }
-      ],
-      explanationDummies: 'Con la mejor mano inicial (AA), inducir la subida de una BB agresiva y luego castigar con una resubida pesada genera botes masivos con ventaja insuperable.',
-      leakWarning: 'Fuga Común: Hacer slowplay pasivo fuera de posición con parejas gigantes.'
-    };
-  } else if (cat === 'blind_defense') {
-    return {
-      id: `bdef-${Date.now()}`,
-      category: 'blind_defense',
-      categoryName: 'Steal & Blind Defense',
-      title: 'Defensa de Big Blind ante Robo de Botón (BB vs BTN)',
-      heroCards: [
-        { rank: 'Q', suit: 'd', id: cardId('Q', 'd') },
-        { rank: '9', suit: 's', id: cardId('9', 's') }
-      ],
-      board: [],
-      potBB: 4.0,
-      heroPos: 'BB',
-      villainPos: 'BTN',
-      villainAction: 'BTN abre 2.2 BB, SB foldea',
-      correctAction: 'Call Defend (1.2 BB más)',
-      correctSizing: '1.2 BB',
-      gtoFrequency: 88,
-      options: [
-        { label: 'Call Defend (Pagar 1.2 BB)', action: 'CALL', isCorrect: true, evLossPct: 0 },
-        { label: 'Fold', action: 'FOLD', isCorrect: false, evLossPct: 6.8 },
-        { label: '3-Bet Raise a 10 BB', action: 'RAISE_10', isCorrect: false, evLossPct: 7.5 }
-      ],
-      explanationDummies: 'Al haber invertido ya 1 BB, las pot odds son de 4:1 (requieres solo ~22% de equity). Foldear Q9o ante un sizing mínimo del BTN regala fichas a largo plazo.',
-      leakWarning: 'Fuga Común: Sobre-foldear la Big Blind ante subidas baratas de robo.'
-    };
-  } else {
-    // bluff_catch
-    return {
-      id: `bc-${Date.now()}`,
-      category: 'bluff_catch',
-      categoryName: 'Bluff Catching en River',
-      title: 'Caza de Faroles en el River (Single Pair vs Triple Barrel)',
-      heroCards: [
-        { rank: 'A', suit: 's', id: cardId('A', 's') },
-        { rank: 'J', suit: 'h', id: cardId('J', 'h') }
-      ],
-      board: [
-        { rank: 'A', suit: 'd', id: cardId('A', 'd') },
-        { rank: '8', suit: 'c', id: cardId('8', 'c') },
-        { rank: '4', suit: 's', id: cardId('4', 's') },
-        { rank: '2', suit: 'h', id: cardId('2', 'h') },
-        { rank: '7', suit: 'd', id: cardId('7', 'd') }
-      ],
-      potBB: 24.0,
-      heroPos: 'BB',
-      villainPos: 'BTN (Agresivo)',
-      villainAction: 'BTN dispara 3ª bala de 16 BB en el river (botes fallidos)',
-      correctAction: 'CALL (Bluff Catch)',
-      correctSizing: '16 BB',
-      gtoFrequency: 75,
-      options: [
-        { label: 'Call Bluff Catch (16 BB)', action: 'CALL', isCorrect: true, evLossPct: 0 },
-        { label: 'Fold', action: 'FOLD', isCorrect: false, evLossPct: 8.9 },
-        { label: 'All-in Raise', action: 'ALLIN', isCorrect: false, evLossPct: 15.2 }
-      ],
-      explanationDummies: 'El board no completó proyectos de color ni escaleras lógicas. Con Top Pair y buen kicker, el rango rival contiene suficientes faroles de proyectos no completados para hacer el call rentable según las pot odds.',
-      leakWarning: 'Fuga Común: Pánico ante la 3ª bala en river y foldear todo lo que no sea color o full.'
-    };
-  }
-};
+export type { AcademyCategory } from '../engine/academySpots';
 
 const CATEGORIES: { id: AcademyCategory; label: string; icon: string }[] = [
   { id: 'dry_flop', label: 'Flops Secos (Dry)', icon: '🏜️' },
@@ -499,30 +134,10 @@ const INITIAL_ROADMAP: RoadmapPhase[] = [
   }
 ];
 
-const RANDOM_PROCEDURAL_SCENARIO = (cat: AcademyCategory): QuizScenario => {
-  const base = GENERATE_SCENARIO(cat);
-  const suitsPool: Array<'s' | 'h' | 'd' | 'c'> = ['s', 'h', 'd', 'c'];
-  const shifted = [...suitsPool].sort(() => Math.random() - 0.5);
-  const mapSuit = (s: 's' | 'h' | 'd' | 'c') => shifted[suitsPool.indexOf(s)];
-
-  return {
-    ...base,
-    id: `${cat}-proc-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-    heroCards: [
-      { rank: base.heroCards[0].rank, suit: mapSuit(base.heroCards[0].suit), id: cardId(base.heroCards[0].rank, mapSuit(base.heroCards[0].suit)) },
-      { rank: base.heroCards[1].rank, suit: mapSuit(base.heroCards[1].suit), id: cardId(base.heroCards[1].rank, mapSuit(base.heroCards[1].suit)) }
-    ],
-    board: base.board.map(c => {
-      const nextSuit = mapSuit(c.suit);
-      return { rank: c.rank, suit: nextSuit, id: cardId(c.rank, nextSuit) };
-    })
-  };
-};
-
 export const AcademyRoadmapDashboard: React.FC = () => {
-  const [activeSubTab, setActiveSubTab] = useState<'sim' | 'dashboard' | 'roadmap' | 'flashcards' | 'concepts'>('sim');
+  const [activeSubTab, setActiveSubTab] = useState<'sim' | 'evaluation' | 'dashboard' | 'roadmap' | 'flashcards' | 'concepts'>('sim');
   const [activeCategory, setActiveCategory] = useState<AcademyCategory>('dry_flop');
-  const [currentScenario, setCurrentScenario] = useState<QuizScenario>(() => GENERATE_SCENARIO('dry_flop'));
+  const [currentScenario, setCurrentScenario] = useState<QuizScenario>(() => getNextAcademyScenario('dry_flop'));
   const [selectedOptionIndex, setSelectedOptionIndex] = useState<number | null>(null);
   const [hasAnswered, setHasAnswered] = useState(false);
   const [cardSavedToast, setCardSavedToast] = useState(false);
@@ -624,14 +239,16 @@ export const AcademyRoadmapDashboard: React.FC = () => {
     } catch (e) {}
   }, [roadmap]);
 
-  // Handle category switch
+  // Handle category switch (always deals a fresh scenario distinct from current)
   const handleSelectCategory = (cat: AcademyCategory) => {
     setActiveCategory(cat);
-    setCurrentScenario(GENERATE_SCENARIO(cat));
+    setCurrentScenario(getNextAcademyScenario(cat, currentScenario.id));
     setSelectedOptionIndex(null);
     setLastRatedGrade(null);
     setHasAnswered(false);
     setCardSavedToast(false);
+    setConceptRatedToast(null);
+    setQuizSecondsLeft(30);
   };
 
   // Sync quiz ELO
@@ -746,7 +363,7 @@ export const AcademyRoadmapDashboard: React.FC = () => {
     });
   };
 
-  // Next Hand generator (supports random procedural categories in Infinite Quiz mode)
+  // Next Hand generator: guarantees advancing to a genuinely different hand/board spot
   const handleNextHand = () => {
     const nextCat = isInfiniteQuizMode
       ? CATEGORIES[Math.floor(Math.random() * CATEGORIES.length)].id
@@ -754,7 +371,7 @@ export const AcademyRoadmapDashboard: React.FC = () => {
     if (isInfiniteQuizMode) {
       setActiveCategory(nextCat);
     }
-    setCurrentScenario(RANDOM_PROCEDURAL_SCENARIO(nextCat));
+    setCurrentScenario(getNextAcademyScenario(nextCat, currentScenario.id));
     setSelectedOptionIndex(null);
     setHasAnswered(false);
     setCardSavedToast(false);
@@ -918,11 +535,11 @@ export const AcademyRoadmapDashboard: React.FC = () => {
             <h2 className="text-xl font-bold text-white flex items-center gap-2">
               Academia de Póker Interactiva & Dashboard D3.js
               <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-950 border border-blue-800 text-blue-300 font-mono">
-                V3.0 Pro · NL02 ➔ NL100
+                V3.2 Pro · NL02 ➔ NL100
               </span>
             </h2>
             <p className="text-xs text-neutral-400 mt-0.5">
-              Simulador dinámico por texturas, diagnóstico de fugas por IA y Hoja de Ruta de Carrera en 4 Fases con Flashcards SM-2.
+              Simulador multi-mano (48 spots únicos), Módulo de Evaluación Fija/Variable, Auditoría D3 y Carrera en 4 Fases SM-2.
             </p>
           </div>
         </div>
@@ -947,7 +564,19 @@ export const AcademyRoadmapDashboard: React.FC = () => {
               : 'bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800'
           }`}
         >
-          <span>🎯 Simulador &amp; Quiz Infinito</span>
+          <span>🎯 Simulador Multi-Mano</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('evaluation')}
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-all whitespace-nowrap cursor-pointer ${
+            activeSubTab === 'evaluation'
+              ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
+              : 'bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800'
+          }`}
+        >
+          <ClipboardCheck className="w-3.5 h-3.5" />
+          <span>📝 Evaluación (Fijos + Variables)</span>
         </button>
         <button
           type="button"
@@ -1046,8 +675,20 @@ export const AcademyRoadmapDashboard: React.FC = () => {
                   <span className="text-xs font-bold uppercase tracking-wider text-blue-400">
                     Spot Activo: {currentScenario.categoryName}
                   </span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-neutral-950 border border-neutral-800 text-neutral-400">
+                    #{currentScenario.id}
+                  </span>
                 </div>
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={handleNextHand}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-neutral-950 hover:bg-neutral-800 text-blue-300 border border-blue-500/30 transition-colors cursor-pointer"
+                    title="Repartir otra mano y board distinto dentro de esta categoría"
+                  >
+                    <span>Siguiente Mano</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </button>
                   <button
                     type="button"
                     onClick={() => {
@@ -1061,7 +702,7 @@ export const AcademyRoadmapDashboard: React.FC = () => {
                     }`}
                   >
                     <Zap className="w-3.5 h-3.5" />
-                    <span>{isInfiniteQuizMode ? 'Quiz 30s + ELO: ON' : 'Activar Quiz Infinito (30s)'}</span>
+                    <span>{isInfiniteQuizMode ? 'Quiz 30s + ELO: ON' : 'Quiz Infinito (30s)'}</span>
                   </button>
                   <span className="text-xs text-neutral-400 font-mono">
                     Frec GTO: <strong className="text-emerald-400">{currentScenario.gtoFrequency}%</strong>
@@ -1319,6 +960,11 @@ export const AcademyRoadmapDashboard: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* VIEW 1A: EVALUATION MODULE (FIXED + VARIABLE SPOTS) */}
+      {activeSubTab === 'evaluation' && (
+        <EvaluationModule />
       )}
 
       {/* VIEW 1B: PROGRESS DASHBOARD D3.JS + PDF AUDIT */}

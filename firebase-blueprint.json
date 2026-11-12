@@ -2,7 +2,7 @@
   "entities": {
     "UserProfile": {
       "title": "UserProfile",
-      "description": "Private 6-Max NLHE student profile, ELO rating, mastery metrics and career roadmap progress.",
+      "description": "Private 6-Max NLHE student profile, subscription plan state, evaluation scores, ELO rating, mastery metrics and career roadmap progress.",
       "type": "object",
       "properties": {
         "uid": {
@@ -11,6 +11,12 @@
           "minLength": 6,
           "maxLength": 128,
           "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "description": "Verified user email address",
+          "minLength": 3,
+          "maxLength": 160
         },
         "displayName": {
           "type": "string",
@@ -22,6 +28,28 @@
           "type": "string",
           "description": "Optional avatar URL",
           "maxLength": 512
+        },
+        "role": {
+          "type": "string",
+          "enum": ["user", "admin"],
+          "maxLength": 16
+        },
+        "planTier": {
+          "type": "string",
+          "enum": ["free", "pro", "elite"],
+          "maxLength": 16
+        },
+        "planActive": {
+          "type": "boolean",
+          "description": "Whether the user's plan access is enabled by administration"
+        },
+        "planPermissions": {
+          "type": "object",
+          "description": "Optional per-user granular subscription permissions (labPro, webBrain, unlimitedEval, pdfExport, planAdmin)"
+        },
+        "isManualPlaceholder": {
+          "type": "boolean",
+          "description": "True when created manually by an administrator prior to the user's first Google sign-in"
         },
         "elo": {
           "type": "number",
@@ -47,6 +75,10 @@
           "type": "object",
           "description": "Map of category accuracy counters"
         },
+        "evaluationStats": {
+          "type": "object",
+          "description": "Latest and best evaluation exam scores across fixed and variable spot modules"
+        },
         "createdAt": {
           "type": "string",
           "format": "date-time",
@@ -58,7 +90,80 @@
           "description": "Server last update timestamp"
         }
       },
-      "required": ["uid", "displayName", "elo", "masteryScore", "totalDecisions", "totalMistakes", "roadmapDoneIds", "categoryStats", "createdAt", "updatedAt"]
+      "required": [
+        "uid", "email", "displayName", "role", "planTier", "planActive",
+        "elo", "masteryScore", "totalDecisions", "totalMistakes",
+        "roadmapDoneIds", "categoryStats", "evaluationStats", "createdAt", "updatedAt"
+      ]
+    },
+    "UserInvite": {
+      "title": "UserInvite",
+      "description": "Admin-provisioned manual user invitation binding a verified email to pre-assigned plan, active state, role, and granular permissions.",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "role": {
+          "type": "string",
+          "enum": ["user", "admin"],
+          "maxLength": 16
+        },
+        "planTier": {
+          "type": "string",
+          "enum": ["free", "pro", "elite"],
+          "maxLength": 16
+        },
+        "planActive": {
+          "type": "boolean"
+        },
+        "planPermissions": {
+          "type": "object",
+          "description": "Granular plan permissions (labPro, webBrain, unlimitedEval, pdfExport, planAdmin)"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "claimed"],
+          "maxLength": 16
+        },
+        "manualUserDocId": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdByUid": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "claimedUid": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "email", "displayName", "role", "planTier", "planActive", "planPermissions",
+        "status", "manualUserDocId", "createdByUid", "createdAt", "updatedAt"
+      ]
     },
     "SM2ItemRecord": {
       "title": "SM2ItemRecord",
@@ -174,12 +279,60 @@
         }
       },
       "required": ["ownerId", "scenarioTitle", "heroCombo", "wetness", "evLossPercentOfPot", "chosenAction", "bestAction", "prescriptiveFix", "createdAt"]
+    },
+    "AdminAuditLog": {
+      "title": "AdminAuditLog",
+      "description": "Immutable administrative audit trail recording plan activations, tier changes, manual user creation, and RBAC updates.",
+      "type": "object",
+      "properties": {
+        "actorUid": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "actorEmail": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "targetUid": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "targetLabel": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "action": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 64
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["actorUid", "actorEmail", "targetUid", "targetLabel", "action", "detail", "createdAt"]
     }
   },
   "firestore": {
     "/users/{userId}": {
       "schema": { "$ref": "#/entities/UserProfile" },
-      "description": "Owner-isolated student profile with ELO, mastery score, category stats, and career roadmap milestones."
+      "description": "Owner & Admin readable student profile including plan tier, active status, evaluation metrics & level, ELO, category stats, and career roadmap milestones."
+    },
+    "/userInvites/{inviteId}": {
+      "schema": { "$ref": "#/entities/UserInvite" },
+      "description": "Admin-provisioned user provisioning records keyed deterministically from email for first-login claim."
     },
     "/users/{userId}/sm2Items/{itemId}": {
       "schema": { "$ref": "#/entities/SM2ItemRecord" },
@@ -188,6 +341,10 @@
     "/users/{userId}/mistakes/{mistakeId}": {
       "schema": { "$ref": "#/entities/MistakeRecord" },
       "description": "User's private captured >5% EV loss mistakes and board texture leaks."
+    },
+    "/adminAuditLogs/{logId}": {
+      "schema": { "$ref": "#/entities/AdminAuditLog" },
+      "description": "Admin-only immutable audit logs of plan and role management actions."
     }
   }
 }

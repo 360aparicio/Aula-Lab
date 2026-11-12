@@ -32,20 +32,72 @@ service cloud.firestore {
       return isVerifiedUser() && request.auth.uid == userId;
     }
 
+    function isAdmin() {
+      return isVerifiedUser() && (
+        request.auth.token.email == '360aparicio@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.planActive == true
+        )
+      );
+    }
+
+    function isValidPlanPermissions(perms) {
+      return perms is map
+        && perms.keys().hasAll(['labPro', 'webBrain', 'unlimitedEval', 'pdfExport'])
+        && perms.keys().hasOnly(['labPro', 'webBrain', 'unlimitedEval', 'pdfExport', 'planAdmin'])
+        && perms.labPro is bool
+        && perms.webBrain is bool
+        && perms.unlimitedEval is bool
+        && perms.pdfExport is bool
+        && (!perms.keys().hasAny(['planAdmin']) || perms.planAdmin is bool);
+    }
+
+    function isValidEmailKey(inviteId) {
+      return isVerifiedUser()
+        && request.auth.token.email is string
+        && inviteId == ('inv_' + request.auth.token.email.lower().replace('[^a-zA-Z0-9_\\-]', '_'));
+    }
+
+    function hasValidInviteForCaller() {
+      return isVerifiedUser()
+        && request.auth.token.email is string
+        && exists(/databases/$(database)/documents/userInvites/$( 'inv_' + request.auth.token.email.lower().replace('[^a-zA-Z0-9_\\-]', '_') ))
+        && get(/databases/$(database)/documents/userInvites/$( 'inv_' + request.auth.token.email.lower().replace('[^a-zA-Z0-9_\\-]', '_') )).data.status == 'pending'
+        && get(/databases/$(database)/documents/userInvites/$( 'inv_' + request.auth.token.email.lower().replace('[^a-zA-Z0-9_\\-]', '_') )).data.email == request.auth.token.email.lower();
+    }
+
+    function matchesCallerInvite(data) {
+      return hasValidInviteForCaller()
+        && data.role == get(/databases/$(database)/documents/userInvites/$( 'inv_' + request.auth.token.email.lower().replace('[^a-zA-Z0-9_\\-]', '_') )).data.role
+        && data.planTier == get(/databases/$(database)/documents/userInvites/$( 'inv_' + request.auth.token.email.lower().replace('[^a-zA-Z0-9_\\-]', '_') )).data.planTier
+        && data.planActive == get(/databases/$(database)/documents/userInvites/$( 'inv_' + request.auth.token.email.lower().replace('[^a-zA-Z0-9_\\-]', '_') )).data.planActive
+        && (!data.keys().hasAny(['planPermissions']) || data.planPermissions == get(/databases/$(database)/documents/userInvites/$( 'inv_' + request.auth.token.email.lower().replace('[^a-zA-Z0-9_\\-]', '_') )).data.planPermissions);
+    }
+
     // Validation Blueprint: UserProfile
     function isValidUserProfile(data, userId) {
       return data.keys().hasAll([
-        'uid', 'displayName', 'elo', 'masteryScore', 'totalDecisions',
-        'totalMistakes', 'roadmapDoneIds', 'categoryStats', 'createdAt', 'updatedAt'
+        'uid', 'email', 'displayName', 'role', 'planTier', 'planActive',
+        'elo', 'masteryScore', 'totalDecisions', 'totalMistakes',
+        'roadmapDoneIds', 'categoryStats', 'evaluationStats', 'createdAt', 'updatedAt'
       ])
       && data.keys().hasOnly([
-        'uid', 'displayName', 'photoURL', 'elo', 'masteryScore', 'totalDecisions',
-        'totalMistakes', 'roadmapDoneIds', 'categoryStats', 'createdAt', 'updatedAt'
+        'uid', 'email', 'displayName', 'photoURL', 'role', 'planTier', 'planActive', 'planPermissions',
+        'isManualPlaceholder', 'elo', 'masteryScore', 'totalDecisions', 'totalMistakes',
+        'roadmapDoneIds', 'categoryStats', 'evaluationStats', 'createdAt', 'updatedAt'
       ])
-      && data.uid is string && data.uid.size() >= 6 && data.uid.size() <= 128
-      && data.uid == request.auth.uid && data.uid == userId
+      && data.uid is string && data.uid.size() >= 6 && data.uid.size() <= 128 && data.uid == userId
+      && data.email is string && data.email.size() >= 3 && data.email.size() <= 160
       && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80
       && (!data.keys().hasAny(['photoURL']) || (data.photoURL is string && data.photoURL.size() <= 512))
+      && (!data.keys().hasAny(['planPermissions']) || isValidPlanPermissions(data.planPermissions))
+      && (!data.keys().hasAny(['isManualPlaceholder']) || data.isManualPlaceholder is bool)
+      && data.role in ['user', 'admin']
+      && data.planTier in ['free', 'pro', 'elite']
+      && data.planActive is bool
       && data.elo is number && data.elo >= 0 && data.elo <= 5000
       && data.masteryScore is number && data.masteryScore >= 0 && data.masteryScore <= 100
       && data.totalDecisions is number && data.totalDecisions >= 0
@@ -53,6 +105,31 @@ service cloud.firestore {
       && data.roadmapDoneIds is list && data.roadmapDoneIds.size() <= 32
       && (data.roadmapDoneIds.size() == 0 || (data.roadmapDoneIds[0] is string && data.roadmapDoneIds[0].size() <= 32))
       && data.categoryStats is map
+      && data.evaluationStats is map
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    // Validation Blueprint: UserInvite
+    function isValidUserInvite(data) {
+      return data.keys().hasAll([
+        'email', 'displayName', 'role', 'planTier', 'planActive', 'planPermissions',
+        'status', 'manualUserDocId', 'createdByUid', 'createdAt', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'email', 'displayName', 'role', 'planTier', 'planActive', 'planPermissions',
+        'status', 'manualUserDocId', 'createdByUid', 'claimedUid', 'createdAt', 'updatedAt'
+      ])
+      && data.email is string && data.email.size() >= 3 && data.email.size() <= 160
+      && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80
+      && data.role in ['user', 'admin']
+      && data.planTier in ['free', 'pro', 'elite']
+      && data.planActive is bool
+      && isValidPlanPermissions(data.planPermissions)
+      && data.status in ['pending', 'claimed']
+      && data.manualUserDocId is string && data.manualUserDocId.size() >= 6 && data.manualUserDocId.size() <= 128
+      && data.createdByUid is string && data.createdByUid.size() >= 6 && data.createdByUid.size() <= 128
+      && (!data.keys().hasAny(['claimedUid']) || (data.claimedUid is string && data.claimedUid.size() >= 6 && data.claimedUid.size() <= 128))
       && data.createdAt is timestamp
       && data.updatedAt is timestamp;
     }
@@ -108,34 +185,122 @@ service cloud.firestore {
       && data.createdAt is timestamp;
     }
 
-    // Match User Profile Collection
-    match /users/{userId} {
-      allow get: if isValidId(userId) && isOwner(userId);
-      allow list: if isVerifiedUser() && existing().uid == request.auth.uid;
+    // Admin lookup collection (read-only for owner)
+    match /admins/{adminId} {
+      allow get: if isValidId(adminId) && isOwner(adminId);
+      allow list, write: if false;
+    }
 
-      allow create: if isValidId(userId)
-        && isOwner(userId)
-        && isValidUserProfile(incoming(), userId)
+    // Admin-provisioned manual user invitations
+    match /userInvites/{inviteId} {
+      allow get: if isValidId(inviteId) && (isAdmin() || (isValidEmailKey(inviteId) && existing().email == request.auth.token.email.lower()));
+      allow list: if isAdmin();
+      allow create: if isValidId(inviteId)
+        && isAdmin()
+        && isValidUserInvite(incoming())
+        && incoming().createdByUid == request.auth.uid
         && incoming().createdAt == request.time
         && incoming().updatedAt == request.time;
+      allow update: if isValidId(inviteId)
+        && isValidUserInvite(incoming())
+        && incoming().email == existing().email
+        && incoming().createdByUid == existing().createdByUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() || (
+            isValidEmailKey(inviteId)
+            && existing().status == 'pending'
+            && incoming().status == 'claimed'
+            && incoming().claimedUid == request.auth.uid
+            && incoming().role == existing().role
+            && incoming().planTier == existing().planTier
+            && incoming().planActive == existing().planActive
+            && incoming().planPermissions == existing().planPermissions
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'claimedUid', 'updatedAt'])
+          )
+        );
+      allow delete: if isValidId(inviteId) && isAdmin();
+    }
+
+    // Match User Profile Collection
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin() || (isVerifiedUser() && existing().uid == request.auth.uid);
+
+      allow create: if isValidId(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin()
+          || (
+            isOwner(userId)
+            && incoming().uid == request.auth.uid
+            && !incoming().keys().hasAny(['isManualPlaceholder'])
+            && (
+              matchesCallerInvite(incoming())
+              || (
+                incoming().role == 'user'
+                && incoming().planTier == 'free'
+                && incoming().planActive == true
+                && !incoming().keys().hasAny(['planPermissions'])
+              )
+            )
+          )
+        );
 
       allow update: if isValidId(userId)
-        && isOwner(userId)
         && isValidUserProfile(incoming(), userId)
         && incoming().uid == existing().uid
         && incoming().createdAt == existing().createdAt
         && incoming().updatedAt == request.time
-        && incoming().diff(existing()).affectedKeys().hasOnly([
-          'displayName', 'photoURL', 'elo', 'masteryScore', 'totalDecisions',
-          'totalMistakes', 'roadmapDoneIds', 'categoryStats', 'updatedAt'
-        ]);
+        && (
+          // Normal strict V3.2/V3.4 updates (existing doc already has RBAC/plan fields)
+          (
+            existing().keys().hasAll(['email', 'role', 'planTier', 'planActive', 'evaluationStats'])
+            && incoming().email == existing().email
+            && (
+              // Tier 1: Admin can manage planTier, planActive, planPermissions, role & metrics
+              (
+                isAdmin()
+                && incoming().diff(existing()).affectedKeys().hasOnly([
+                  'displayName', 'photoURL', 'role', 'planTier', 'planActive', 'planPermissions',
+                  'isManualPlaceholder', 'elo', 'masteryScore', 'totalDecisions', 'totalMistakes',
+                  'roadmapDoneIds', 'categoryStats', 'evaluationStats', 'updatedAt'
+                ])
+              )
+              ||
+              // Tier 2: Owner can ONLY update own study metrics (cannot forge plan, permissions or role)
+              (
+                isOwner(userId)
+                && incoming().role == existing().role
+                && incoming().planTier == existing().planTier
+                && incoming().planActive == existing().planActive
+                && incoming().diff(existing()).affectedKeys().hasOnly([
+                  'displayName', 'photoURL', 'elo', 'masteryScore', 'totalDecisions',
+                  'totalMistakes', 'roadmapDoneIds', 'categoryStats', 'evaluationStats', 'updatedAt'
+                ])
+              )
+            )
+          )
+          ||
+          // Safe one-time migration from legacy V3.1 docs missing V3.2 RBAC/plan fields
+          (
+            !existing().keys().hasAll(['email', 'role', 'planTier', 'planActive', 'evaluationStats'])
+            && isOwner(userId)
+            && incoming().role == (isAdmin() ? 'admin' : 'user')
+            && incoming().planTier == (isAdmin() ? 'elite' : 'free')
+            && incoming().planActive == true
+          )
+        );
 
-      allow delete: if isValidId(userId) && isOwner(userId);
+      allow delete: if isValidId(userId) && (isOwner(userId) || isAdmin());
 
       // Subcollection: SM-2 Items
       match /sm2Items/{itemId} {
-        allow get: if isValidId(userId) && isValidId(itemId) && isOwner(userId);
-        allow list: if isVerifiedUser() && existing().ownerId == request.auth.uid;
+        allow get: if isValidId(userId) && isValidId(itemId) && (isOwner(userId) || isAdmin());
+        allow list: if isAdmin() || (isVerifiedUser() && existing().ownerId == request.auth.uid);
 
         allow create: if isValidId(userId) && isValidId(itemId)
           && isOwner(userId)
@@ -157,13 +322,13 @@ service cloud.firestore {
             'reviewCount', 'updatedAt'
           ]);
 
-        allow delete: if isValidId(userId) && isValidId(itemId) && isOwner(userId);
+        allow delete: if isValidId(userId) && isValidId(itemId) && (isOwner(userId) || isAdmin());
       }
 
       // Subcollection: Mistakes (>5% EV)
       match /mistakes/{mistakeId} {
-        allow get: if isValidId(userId) && isValidId(mistakeId) && isOwner(userId);
-        allow list: if isVerifiedUser() && existing().ownerId == request.auth.uid;
+        allow get: if isValidId(userId) && isValidId(mistakeId) && (isOwner(userId) || isAdmin());
+        allow list: if isAdmin() || (isVerifiedUser() && existing().ownerId == request.auth.uid);
 
         allow create: if isValidId(userId) && isValidId(mistakeId)
           && isOwner(userId)
@@ -171,9 +336,37 @@ service cloud.firestore {
           && isValidMistakeRecord(incoming(), userId)
           && incoming().createdAt == request.time;
 
-        allow update: if false; // Mistakes are immutable audit logs
-        allow delete: if isValidId(userId) && isValidId(mistakeId) && isOwner(userId);
+        allow update: if false;
+        allow delete: if isValidId(userId) && isValidId(mistakeId) && (isOwner(userId) || isAdmin());
       }
+    }
+
+    // Validation Blueprint: AdminAuditLog
+    function isValidAdminAuditLog(data) {
+      return data.keys().hasAll([
+        'actorUid', 'actorEmail', 'targetUid', 'targetLabel', 'action', 'detail', 'createdAt'
+      ])
+      && data.keys().hasOnly([
+        'actorUid', 'actorEmail', 'targetUid', 'targetLabel', 'action', 'detail', 'createdAt'
+      ])
+      && data.actorUid is string && data.actorUid.size() >= 6 && data.actorUid.size() <= 128
+      && data.actorEmail is string && data.actorEmail.size() >= 3 && data.actorEmail.size() <= 160
+      && data.targetUid is string && data.targetUid.size() >= 6 && data.targetUid.size() <= 128
+      && data.targetLabel is string && data.targetLabel.size() >= 1 && data.targetLabel.size() <= 160
+      && data.action is string && data.action.size() >= 2 && data.action.size() <= 64
+      && data.detail is string && data.detail.size() >= 1 && data.detail.size() <= 300
+      && data.createdAt is timestamp;
+    }
+
+    // Immutable Admin Audit Log Collection
+    match /adminAuditLogs/{logId} {
+      allow get, list: if isAdmin();
+      allow create: if isValidId(logId)
+        && isAdmin()
+        && isValidAdminAuditLog(incoming())
+        && incoming().actorUid == request.auth.uid
+        && incoming().createdAt == request.time;
+      allow update, delete: if false;
     }
   }
 }

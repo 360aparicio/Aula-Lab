@@ -34,10 +34,14 @@ import { BoardSelector } from './components/BoardSelector';
 import { HandContextBar } from './components/HandContextBar';
 import { PreflopActionContext, getAutoMatchupProfile, OpponentProfile } from './engine/preflopMatchups';
 import { SolverMetaUpdater } from './engine/solverMetaUpdater';
+import { useAuth } from './context/AuthContext';
+import { LoginScreen } from './components/LoginScreen';
+import { AdminDashboard } from './components/AdminDashboard';
 
-import { Play, Pause, Square, RefreshCw, Zap, CheckCircle, SlidersHorizontal, Compass } from 'lucide-react';
+import { Play, Pause, Square, SlidersHorizontal, Compass, Lock } from 'lucide-react';
 
 export default function App() {
+  const { user, isAuthReady, isAdmin, isPlanActive, screenMode } = useAuth();
   const [activeTab, setActiveTab] = useState<NavTab>('wizard');
   const [previousTab, setPreviousTab] = useState<NavTab>('wizard');
 
@@ -376,6 +380,42 @@ export default function App() {
 
   const isSolving = solverProgress?.status === 'running' || solverProgress?.status === 'paused';
 
+  if (!isAuthReady) {
+    return (
+      <div className="min-h-screen bg-black text-neutral-100 flex items-center justify-center p-6">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <div className="w-9 h-9 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
+          <div className="text-sm font-bold text-white">Lab Studio V3.4 Pro</div>
+          <div className="text-xs text-neutral-400">Verificando sesión y estado de tu plan...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginScreen mode="login" />;
+  }
+
+  if (isAdmin && screenMode === 'admin') {
+    return (
+      <div className="min-h-screen bg-black text-neutral-100 flex flex-col font-sans">
+        <Header
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          onQuickSolve={handleStartSolve}
+          isSolving={isSolving}
+        />
+        <main className="flex-1 max-w-[1440px] w-full mx-auto p-4 sm:p-6">
+          <AdminDashboard />
+        </main>
+      </div>
+    );
+  }
+
+  if (!isPlanActive) {
+    return <LoginScreen mode="inactive" />;
+  }
+
   return (
     <div className="min-h-screen bg-black text-neutral-100 flex flex-col font-sans">
       {/* Universal Top Bar */}
@@ -483,17 +523,29 @@ export default function App() {
                   <span>Proceso Paso a Paso (Auto)</span>
                 </button>
 
-                <button
-                  onClick={() => setShowConfigPanel(!showConfigPanel)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors cursor-pointer ${
-                    showConfigPanel
-                      ? 'bg-neutral-800 border-neutral-700 text-white'
-                      : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-white'
-                  }`}
-                >
-                  <SlidersHorizontal className="w-3.5 h-3.5" />
-                  <span>Sizings & Config</span>
-                </button>
+                {isAdmin ? (
+                  <button
+                    onClick={() => setShowConfigPanel(!showConfigPanel)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors cursor-pointer ${
+                      showConfigPanel
+                        ? 'bg-neutral-800 border-neutral-700 text-white'
+                        : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-white'
+                    }`}
+                  >
+                    <SlidersHorizontal className="w-3.5 h-3.5" />
+                    <span>Sizings &amp; Config</span>
+                  </button>
+                ) : (
+                  <span
+                    title="Solo las cuentas con opción Administrador en su plan pueden modificar sizings o algoritmos del motor"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-mono rounded-lg bg-neutral-950 border border-neutral-800 text-neutral-400"
+                  >
+                    <Lock className="w-3 h-3 text-neutral-500" />
+                    <span>
+                      Pot {treeConfig.startingPot} · Stack {treeConfig.effectiveStack} · {dcfrConfig.algorithm} (Solo Admin)
+                    </span>
+                  </span>
+                )}
 
                 {!isSolving ? (
                   <button
@@ -534,8 +586,8 @@ export default function App() {
               </div>
             </div>
 
-            {/* Tree & Engine Config Panel */}
-            {showConfigPanel && (
+            {/* Tree & Engine Config Panel (Exclusivo Admin del Plan) */}
+            {isAdmin && showConfigPanel && (
               <TreeConfigPanel
                 treeConfig={treeConfig}
                 onTreeConfigChange={setTreeConfig}
@@ -651,16 +703,26 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 2: RANGE MATRIX EDITOR */}
+        {/* TAB 2: RANGE MATRIX EDITOR / INSPECTOR */}
         {activeTab === 'ranges' && (
           <div className="flex flex-col gap-6">
-            <div className="flex items-center justify-between p-4 bg-neutral-900 border border-neutral-800 rounded-xl">
+            <div className="flex items-center justify-between gap-3 flex-wrap p-4 bg-neutral-900 border border-neutral-800 rounded-xl">
               <div>
-                <h2 className="text-base font-bold text-white">13×13 Hand Range Matrix Editor</h2>
+                <h2 className="text-base font-bold text-white">
+                  {isAdmin ? '13×13 Hand Range Matrix Editor (Admin)' : '13×13 Hand Range Matrix Inspector'}
+                </h2>
                 <p className="text-xs text-neutral-400 mt-0.5">
-                  Configure weighted preflop distributions for Out-of-Position (OOP) and In-Position (IP) players.
+                  {isAdmin
+                    ? 'Configura distribuciones preflop ponderadas para Out-of-Position (OOP) y In-Position (IP).'
+                    : 'Inspección en modo lectura de combos y bloqueadores activos (solo los Administradores del Plan modifican matrices base).'}
                 </p>
               </div>
+              {!isAdmin && (
+                <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-950 border border-neutral-800 text-[11px] font-mono text-neutral-400">
+                  <Lock className="w-3 h-3 text-neutral-500" />
+                  <span>Solo Uso</span>
+                </span>
+              )}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -670,6 +732,7 @@ export default function App() {
                 boardCards={boardCards}
                 title="OOP Defense / Check Range"
                 badgeLabel="OOP"
+                readOnly={!isAdmin}
               />
 
               <RangeMatrix13x13
@@ -678,6 +741,7 @@ export default function App() {
                 boardCards={boardCards}
                 title="IP Attack / Bet Range"
                 badgeLabel="IP"
+                readOnly={!isAdmin}
               />
             </div>
           </div>

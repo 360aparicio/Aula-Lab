@@ -23,6 +23,7 @@ interface RangeMatrixProps {
   boardCards?: Card[];
   title?: string;
   badgeLabel?: string;
+  readOnly?: boolean;
 }
 
 export const RangeMatrix13x13: React.FC<RangeMatrixProps> = ({
@@ -30,7 +31,8 @@ export const RangeMatrix13x13: React.FC<RangeMatrixProps> = ({
   onChange,
   boardCards = [],
   title = 'Hand Range',
-  badgeLabel = 'OOP'
+  badgeLabel = 'OOP',
+  readOnly = false
 }) => {
   const [brushWeight, setBrushWeight] = useState<number>(1.0);
   const [isMouseDown, setIsMouseDown] = useState(false);
@@ -45,6 +47,7 @@ export const RangeMatrix13x13: React.FC<RangeMatrixProps> = ({
   const metrics = calculateRangeMetrics(range, boardCards);
 
   const handleCellClickOrDrag = (handName: string) => {
+    if (readOnly) return;
     const updatedWeights: RangeWeights = { ...range.weights };
     if (brushWeight === 0) {
       delete updatedWeights[handName];
@@ -58,16 +61,18 @@ export const RangeMatrix13x13: React.FC<RangeMatrixProps> = ({
   };
 
   const handleTextApply = () => {
+    if (readOnly) return;
     try {
       const parsed = parseRangeString(rangeText, range.name);
       onChange(parsed);
       setTextError(null);
-    } catch (e: any) {
+    } catch {
       setTextError('Invalid range syntax');
     }
   };
 
   const handlePresetSelect = (presetKey: string) => {
+    if (readOnly) return;
     const presetStr = RANGE_PRESETS[presetKey];
     if (presetStr) {
       const parsed = parseRangeString(presetStr, presetKey);
@@ -76,10 +81,12 @@ export const RangeMatrix13x13: React.FC<RangeMatrixProps> = ({
   };
 
   const handleClear = () => {
+    if (readOnly) return;
     onChange({ ...range, weights: {} });
   };
 
   const handleSelectAll = () => {
+    if (readOnly) return;
     const allWeights: RangeWeights = {};
     for (const row of CANONICAL_GRID) {
       for (const h of row) {
@@ -102,54 +109,66 @@ export const RangeMatrix13x13: React.FC<RangeMatrixProps> = ({
           </span>
         </div>
 
-        {/* Quick presets */}
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <select
-            onChange={(e) => {
-              if (e.target.value) handlePresetSelect(e.target.value);
-            }}
-            defaultValue=""
-            className="text-xs bg-neutral-950 border border-neutral-800 rounded px-2 py-1 text-neutral-300 focus:outline-hidden"
-          >
-            <option value="" disabled>Load Preset...</option>
-            {Object.keys(RANGE_PRESETS).map(key => (
-              <option key={key} value={key}>{key}</option>
-            ))}
-          </select>
+        {/* Quick presets or Read-only badge */}
+        {readOnly ? (
+          <span className="text-[10px] font-mono px-2.5 py-1 rounded bg-neutral-950 border border-neutral-800 text-neutral-400">
+            Solo Lectura · Solo Admin edita matrices base
+          </span>
+        ) : (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <select
+              onChange={(e) => {
+                if (e.target.value) handlePresetSelect(e.target.value);
+              }}
+              defaultValue=""
+              className="text-xs bg-neutral-950 border border-neutral-800 rounded px-2 py-1 text-neutral-300 focus:outline-hidden"
+            >
+              <option value="" disabled>Load Preset...</option>
+              {Object.keys(RANGE_PRESETS).map(key => (
+                <option key={key} value={key}>{key}</option>
+              ))}
+            </select>
 
-          <button
-            onClick={handleSelectAll}
-            className="text-xs px-2 py-1 rounded bg-neutral-950 border border-neutral-800 text-neutral-400 hover:text-white transition-colors"
-          >
-            100%
-          </button>
-          <button
-            onClick={handleClear}
-            className="text-xs px-2 py-1 rounded bg-neutral-950 border border-neutral-800 text-neutral-400 hover:text-white transition-colors"
-          >
-            Clear
-          </button>
-        </div>
+            <button
+              onClick={handleSelectAll}
+              className="text-xs px-2 py-1 rounded bg-neutral-950 border border-neutral-800 text-neutral-400 hover:text-white transition-colors"
+            >
+              100%
+            </button>
+            <button
+              onClick={handleClear}
+              className="text-xs px-2 py-1 rounded bg-neutral-950 border border-neutral-800 text-neutral-400 hover:text-white transition-colors"
+            >
+              Clear
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Brush tools */}
+      {/* Brush tools / Hover info */}
       <div className="flex items-center justify-between gap-2 flex-wrap text-xs bg-neutral-950/60 p-2 rounded-lg border border-neutral-800/80">
-        <div className="flex items-center gap-1.5">
-          <span className="text-neutral-500 font-medium">Brush Weight:</span>
-          {[1.0, 0.75, 0.5, 0.25, 0.0].map(w => (
-            <button
-              key={w}
-              onClick={() => setBrushWeight(w)}
-              className={`px-2 py-0.5 rounded font-mono font-medium transition-colors ${
-                brushWeight === w
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-neutral-200'
-              }`}
-            >
-              {Math.round(w * 100)}%
-            </button>
-          ))}
-        </div>
+        {readOnly ? (
+          <span className="text-neutral-500 font-medium">
+            Inspección de rangos y bloqueadores (Solo uso)
+          </span>
+        ) : (
+          <div className="flex items-center gap-1.5">
+            <span className="text-neutral-500 font-medium">Brush Weight:</span>
+            {[1.0, 0.75, 0.5, 0.25, 0.0].map(w => (
+              <button
+                key={w}
+                onClick={() => setBrushWeight(w)}
+                className={`px-2 py-0.5 rounded font-mono font-medium transition-colors ${
+                  brushWeight === w
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-neutral-200'
+                }`}
+              >
+                {Math.round(w * 100)}%
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Hover info */}
         {hoveredHand && (
@@ -174,8 +193,8 @@ export const RangeMatrix13x13: React.FC<RangeMatrixProps> = ({
         }}
         onMouseUp={() => setIsMouseDown(false)}
       >
-        {CANONICAL_GRID.map((row, rowIdx) =>
-          row.map((cell, colIdx) => {
+        {CANONICAL_GRID.map((row) =>
+          row.map((cell) => {
             const weight = range.weights[cell.name] || 0;
             const remainingCombos = getActiveComboCount(cell.name, boardCards);
             const isBlocked = remainingCombos === 0;
@@ -188,21 +207,18 @@ export const RangeMatrix13x13: React.FC<RangeMatrixProps> = ({
               bgStyle = 'bg-neutral-950 text-neutral-700 opacity-40 line-through';
             } else if (weight > 0) {
               if (cell.type === 'pair') {
-                // Pairs: Green tint
                 bgStyle = weight >= 0.8
                   ? 'bg-emerald-600 text-white font-bold'
                   : weight >= 0.4
                   ? 'bg-emerald-700/80 text-emerald-100'
                   : 'bg-emerald-900/60 text-emerald-200';
               } else if (cell.type === 'suited') {
-                // Suited: Blue/Teal tint
                 bgStyle = weight >= 0.8
                   ? 'bg-cyan-600 text-white font-bold'
                   : weight >= 0.4
                   ? 'bg-cyan-700/80 text-cyan-100'
                   : 'bg-cyan-900/60 text-cyan-200';
               } else {
-                // Offsuit: Amber/Bronze tint
                 bgStyle = weight >= 0.8
                   ? 'bg-amber-600 text-white font-bold'
                   : weight >= 0.4
@@ -222,16 +238,19 @@ export const RangeMatrix13x13: React.FC<RangeMatrixProps> = ({
                 key={cell.name}
                 type="button"
                 onMouseDown={() => {
+                  if (readOnly) return;
                   setIsMouseDown(true);
                   handleCellClickOrDrag(cell.name);
                 }}
                 onMouseEnter={() => {
                   setHoveredHand(cell.name);
-                  if (isMouseDown) {
+                  if (!readOnly && isMouseDown) {
                     handleCellClickOrDrag(cell.name);
                   }
                 }}
-                className={`relative aspect-square flex flex-col items-center justify-center text-[10px] sm:text-xs border ${borderStyle} ${bgStyle} transition-transform active:scale-95 cursor-pointer rounded-xs`}
+                className={`relative aspect-square flex flex-col items-center justify-center text-[10px] sm:text-xs border ${borderStyle} ${bgStyle} transition-transform ${
+                  readOnly ? 'cursor-default' : 'active:scale-95 cursor-pointer'
+                } rounded-xs`}
                 title={`${cell.name} - Combos: ${remainingCombos}`}
               >
                 <span>{cell.name}</span>
@@ -265,22 +284,28 @@ export const RangeMatrix13x13: React.FC<RangeMatrixProps> = ({
           </div>
         </div>
 
-        {/* Text Input */}
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            value={rangeText}
-            onChange={(e) => setRangeText(e.target.value)}
-            placeholder="Standard range notation e.g. AA,KK,AKs-ATs,AKo:0.5"
-            className="flex-1 bg-neutral-950 border border-neutral-800 rounded px-2.5 py-1.5 text-xs text-neutral-200 font-mono focus:outline-hidden focus:border-neutral-600"
-          />
-          <button
-            onClick={handleTextApply}
-            className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded font-medium text-xs whitespace-nowrap transition-colors"
-          >
-            Apply
-          </button>
-        </div>
+        {/* Text Input (Admin editable only; read-only preview for regular users) */}
+        {readOnly ? (
+          <div className="bg-neutral-950 border border-neutral-800/80 rounded px-2.5 py-1.5 text-[11px] text-neutral-400 font-mono truncate" title={rangeText}>
+            {rangeText || 'Rango vacío'}
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={rangeText}
+              onChange={(e) => setRangeText(e.target.value)}
+              placeholder="Standard range notation e.g. AA,KK,AKs-ATs,AKo:0.5"
+              className="flex-1 bg-neutral-950 border border-neutral-800 rounded px-2.5 py-1.5 text-xs text-neutral-200 font-mono focus:outline-hidden focus:border-neutral-600"
+            />
+            <button
+              onClick={handleTextApply}
+              className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded font-medium text-xs whitespace-nowrap transition-colors cursor-pointer"
+            >
+              Apply
+            </button>
+          </div>
+        )}
         {textError && (
           <p className="text-red-400 text-[11px]">{textError}</p>
         )}

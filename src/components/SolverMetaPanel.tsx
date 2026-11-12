@@ -12,6 +12,7 @@ import {
   SOLVER_META_UPDATE_EVENT,
   type SolverMetaState
 } from '../engine/solverMetaUpdater';
+import { useAuth } from '../context/AuthContext';
 import {
   Globe,
   RefreshCw,
@@ -21,7 +22,8 @@ import {
   CheckCircle2,
   AlertCircle,
   Sparkles,
-  BookOpen
+  BookOpen,
+  Lock
 } from 'lucide-react';
 
 const PRESET_TOPICS = [
@@ -44,6 +46,7 @@ const PRESET_TOPICS = [
 ];
 
 export const SolverMetaPanel: React.FC = () => {
+  const { isAdmin } = useAuth();
   const [meta, setMeta] = useState<SolverMetaState>(() => SolverMetaUpdater.getInstance().getState());
   const [customQuery, setCustomQuery] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
@@ -57,6 +60,7 @@ export const SolverMetaPanel: React.FC = () => {
   }, []);
 
   const handleSync = async (topic?: string) => {
+    if (!isAdmin) return;
     setIsSyncing(true);
     setSyncMessage(null);
     const result = await SolverMetaUpdater.getInstance().syncWithInternet(topic || customQuery || undefined);
@@ -95,58 +99,78 @@ export const SolverMetaPanel: React.FC = () => {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => void handleSync()}
-          disabled={isSyncing}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
-            isSyncing
-              ? 'bg-neutral-800 text-neutral-400 cursor-not-allowed'
-              : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/25'
-          }`}
-        >
-          <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-          <span>{isSyncing ? 'Consultando Internet...' : 'Sincronizar Solvers & Internet'}</span>
-        </button>
-      </div>
-
-      {/* Custom Topic Query + Presets */}
-      <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-5 space-y-4">
-        <div className="flex flex-col sm:flex-row gap-2.5">
-          <input
-            type="text"
-            value={customQuery}
-            onChange={(e) => setCustomQuery(e.target.value)}
-            placeholder="Ej: Estrategia GTO en flops monótonos BTN vs BB o sizing de 4-bet..."
-            className="flex-1 bg-neutral-900 border border-neutral-800 focus:border-blue-500 rounded-xl px-4 py-2 text-xs text-white placeholder-neutral-500 outline-none"
-          />
+        {isAdmin ? (
           <button
             type="button"
-            onClick={() => void handleSync(customQuery)}
+            onClick={() => void handleSync()}
             disabled={isSyncing}
-            className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
+              isSyncing
+                ? 'bg-neutral-800 text-neutral-400 cursor-not-allowed'
+                : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/25'
+            }`}
           >
-            Consultar Spot en Web
+            <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+            <span>{isSyncing ? 'Consultando Internet...' : 'Sincronizar Solvers & Internet'}</span>
           </button>
-        </div>
+        ) : (
+          <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-300 text-xs font-mono shrink-0">
+            <Lock className="w-3.5 h-3.5 text-neutral-500" />
+            <span>Modo Lectura · Solo Admin sincroniza</span>
+          </div>
+        )}
+      </div>
 
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="text-neutral-500 font-medium">Consultas rápidas:</span>
-          {PRESET_TOPICS.map(preset => (
-            <button
-              key={preset.label}
-              type="button"
-              onClick={() => {
-                setCustomQuery(preset.query);
-                void handleSync(preset.query);
-              }}
-              disabled={isSyncing}
-              className="px-3 py-1 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 hover:border-blue-500/40 text-neutral-300 rounded-lg transition-colors cursor-pointer"
-            >
-              {preset.label}
-            </button>
-          ))}
-        </div>
+      {/* Custom Topic Query + Presets (Admin Only) or Read-Only Notice */}
+      <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-5 space-y-4">
+        {isAdmin ? (
+          <>
+            <div className="flex flex-col sm:flex-row gap-2.5">
+              <input
+                type="text"
+                value={customQuery}
+                onChange={(e) => setCustomQuery(e.target.value)}
+                placeholder="Ej: Estrategia GTO en flops monótonos BTN vs BB o sizing de 4-bet..."
+                className="flex-1 bg-neutral-900 border border-neutral-800 focus:border-blue-500 rounded-xl px-4 py-2 text-xs text-white placeholder-neutral-500 outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => void handleSync(customQuery)}
+                disabled={isSyncing}
+                className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Consultar Spot en Web
+              </button>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="text-neutral-500 font-medium">Consultas rápidas:</span>
+              {PRESET_TOPICS.map(preset => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => {
+                    setCustomQuery(preset.query);
+                    void handleSync(preset.query);
+                  }}
+                  disabled={isSyncing}
+                  className="px-3 py-1 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 hover:border-blue-500/40 text-neutral-300 rounded-lg transition-colors cursor-pointer"
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="p-3 rounded-xl bg-neutral-900/70 border border-neutral-800 text-xs text-neutral-400 flex items-center gap-2">
+            <Lock className="w-4 h-4 text-neutral-500 shrink-0" />
+            <span>
+              Solo las cuentas con opción <strong className="text-neutral-200">Administrador en el Plan</strong> pueden
+              sincronizar nuevas fuentes de internet o reconfigurar el Cerebro Web. Los jugadores consultan las reglas
+              vigentes para estudio y práctica.
+            </span>
+          </div>
+        )}
 
         {syncMessage && (
           <div className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${

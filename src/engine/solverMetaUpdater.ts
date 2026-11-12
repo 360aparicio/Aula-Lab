@@ -9,6 +9,8 @@
  * para adaptar recomendaciones de calle y sizings en tiempo real.
  */
 
+import { auth } from '../lib/firebase';
+
 export interface SolverSourceCitation {
   title: string;
   url: string;
@@ -157,9 +159,15 @@ export class SolverMetaUpdater {
 
   public async syncWithInternet(topic?: string): Promise<{ ok: boolean; state: SolverMetaState; error?: string }> {
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        const token = await currentUser.getIdToken();
+        headers.Authorization = `Bearer ${token}`;
+      }
       const res = await fetch('/api/solver/sync-internet', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ topic })
       });
       const payload = await res.json();
