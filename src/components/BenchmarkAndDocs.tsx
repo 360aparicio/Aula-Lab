@@ -6,52 +6,60 @@
  */
 
 import React, { useState } from 'react';
-import { KuhnSolver } from '../engine/kuhn';
 import { runEvaluatorTests } from '../../tests/evaluator.test';
 import { runRangeTests } from '../../tests/range.test';
 import { runGameTreeTests } from '../../tests/gameTree.test';
 import { runKuhnTests } from '../../tests/kuhn.test';
 import { runDCFRTests } from '../../tests/dcfr.test';
-import { Play, CheckCircle2, FileText, Code2, ShieldAlert, Cpu } from 'lucide-react';
+import { runPersonalizationTests } from '../../tests/personalization.test';
+import { runV39ProTests } from '../../tests/v39pro.test';
+import { runGtoAuditTests } from '../../tests/gto_audit.test';
+import { Play, FileText, Code2, ShieldAlert, Cpu } from 'lucide-react';
 
 export const BenchmarkAndDocs: React.FC = () => {
   const [activeSubTab, setActiveSubTab] = useState<'tests' | 'algorithms' | 'architecture' | 'windows' | 'status'>('tests');
   const [testOutput, setTestOutput] = useState<string | null>(null);
   const [isRunningTests, setIsRunningTests] = useState(false);
 
-  const handleRunAllTests = () => {
+  const handleRunAllTests = async () => {
     setIsRunningTests(true);
-    setTimeout(() => {
-      try {
-        const t1 = runEvaluatorTests();
-        const t2 = runRangeTests();
-        const t3 = runGameTreeTests();
-        const t4 = runKuhnTests();
-        const t5 = runDCFRTests();
+    try {
+      const t1 = runEvaluatorTests();
+      const t2 = runRangeTests();
+      const t3 = runGameTreeTests();
+      const t4 = runKuhnTests();
+      const t5 = runDCFRTests();
+      const t6 = runPersonalizationTests();
+      const t7 = await runV39ProTests();
+      const t8 = runGtoAuditTests();
 
-        const totalPassed = t1.passed + t2.passed + t3.passed + t4.passed + t5.passed;
-        const totalFailed = t1.failed + t2.failed + t3.failed + t4.failed + t5.failed;
+      const totalPassed =
+        t1.passed + t2.passed + t3.passed + t4.passed + t5.passed + t6.passed + t7.passed + t8.passed;
+      const totalFailed =
+        t1.failed + t2.failed + t3.failed + t4.failed + t5.failed + t6.failed + t7.failed + t8.failed;
 
-        const report = `
+      const report = `
 ========================================================================
-            LAB DE PENSAMIENTO - REPORTE MATEMÁTICO DEL MOTOR
+      ALLIN SCHOOL · LAB STUDIO — AUDITORÍA MATEMÁTICA EN TIEMPO REAL
 ========================================================================
-[1] 7-Card Hand Evaluator & Tie-Breakers:  ${t1.passed} passed, ${t1.failed} failed
-[2] 13x13 Range Matrix & Blocker Engine:  ${t2.passed} passed, ${t2.failed} failed
-[3] Decision Tree Builder & Actions:     ${t3.passed} passed, ${t3.failed} failed
-[4] Kuhn Poker Analytical Reference:     ${t4.passed} passed, ${t4.failed} failed
-[5] Discounted CFR (DCFR) Subgame:        ${t5.passed} passed, ${t5.failed} failed
+[1] Evaluador Exacto 7 Cartas y Desempates:  ${t1.passed} ok, ${t1.failed} fallos
+[2] Matriz 13x13 y Motor de Bloqueadores:   ${t2.passed} ok, ${t2.failed} fallos
+[3] Árbol Multi-Calle & Acciones Legales:   ${t3.passed} ok, ${t3.failed} fallos
+[4] Referencia Analítica Kuhn Poker Nash:    ${t4.passed} ok, ${t4.failed} fallos
+[5] Motor DCFR Subjuego (Runouts + EV):     ${t5.passed} ok, ${t5.failed} fallos
+[6] Aislamiento por UID y Pools Sin Rep.:   ${t6.passed} ok, ${t6.failed} fallos
+[7] Simulador 6-Max, TheTracker2 y Nivel:   ${t7.passed} ok, ${t7.failed} fallos
+[8] Auditoría Matemática Lab Studio Pro:    ${t8.passed} ok, ${t8.failed} fallos
 ------------------------------------------------------------------------
-SUMMARY: ${totalPassed} PASSED / ${totalFailed} FAILED
-STATUS: ALL MATHEMATICAL INVARIANTS & CONVERGENCE CONDITIONS VERIFIED
+RESUMEN TOTAL: ${totalPassed} PRUEBAS PASADAS / ${totalFailed} FALLOS
+ESTADO: ${totalFailed === 0 ? 'INVARIANTES MATEMÁTICOS Y CONVERGENCIA VERIFICADOS' : 'ATENCIÓN: REVISAR FALLOS DETECTADOS'}
 ========================================================================`;
-        setTestOutput(report);
-      } catch (err: any) {
-        setTestOutput(`Error during test run: ${err.message || String(err)}`);
-      } finally {
-        setIsRunningTests(false);
-      }
-    }, 50);
+      setTestOutput(report);
+    } catch (err: any) {
+      setTestOutput(`Error ejecutando la batería matemática: ${err.message || String(err)}`);
+    } finally {
+      setIsRunningTests(false);
+    }
   };
 
   return (
@@ -67,55 +75,55 @@ STATUS: ALL MATHEMATICAL INVARIANTS & CONVERGENCE CONDITIONS VERIFIED
           }`}
         >
           <Cpu className="w-3.5 h-3.5" />
-          <span>Live Math Benchmarks</span>
+          <span>Pruebas Matemáticas en Vivo</span>
         </button>
 
         <button
           onClick={() => setActiveSubTab('algorithms')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
             activeSubTab === 'algorithms'
               ? 'bg-neutral-800 text-white'
               : 'text-neutral-400 hover:text-white'
           }`}
         >
           <Code2 className="w-3.5 h-3.5" />
-          <span>DCFR Algorithms</span>
+          <span>Algoritmo DCFR</span>
         </button>
 
         <button
           onClick={() => setActiveSubTab('architecture')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
             activeSubTab === 'architecture'
               ? 'bg-neutral-800 text-white'
               : 'text-neutral-400 hover:text-white'
           }`}
         >
           <FileText className="w-3.5 h-3.5" />
-          <span>Architecture</span>
+          <span>Arquitectura</span>
         </button>
 
         <button
           onClick={() => setActiveSubTab('windows')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
             activeSubTab === 'windows'
               ? 'bg-neutral-800 text-white'
               : 'text-neutral-400 hover:text-white'
           }`}
         >
           <FileText className="w-3.5 h-3.5" />
-          <span>Windows Packaging</span>
+          <span>Empaquetado Windows</span>
         </button>
 
         <button
           onClick={() => setActiveSubTab('status')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
             activeSubTab === 'status'
               ? 'bg-neutral-800 text-white'
               : 'text-neutral-400 hover:text-white'
           }`}
         >
           <ShieldAlert className="w-3.5 h-3.5" />
-          <span>Build Status & Honesty</span>
+          <span>Estado del Motor Lab Studio</span>
         </button>
       </div>
 
@@ -124,23 +132,23 @@ STATUS: ALL MATHEMATICAL INVARIANTS & CONVERGENCE CONDITIONS VERIFIED
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
-              <h3 className="text-base font-bold text-white">Mathematical Invariants & Golden Tests</h3>
+              <h3 className="text-base font-bold text-white">Invariantes Matemáticos y Batería Completa</h3>
               <p className="text-xs text-neutral-400 mt-1">
-                Executes all 332 automated tests in the browser, verifying zero-sum game utilities, regret matching convergence, and hand ranking.
+                Ejecuta todas las suites automatizadas del motor en el navegador, verificando utilidad suma-cero, convergencia DCFR, TheTracker2 y simulador 6-Max.
               </p>
             </div>
             <button
               onClick={handleRunAllTests}
               disabled={isRunningTests}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition-colors shadow-sm"
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition-colors shadow-sm cursor-pointer whitespace-nowrap"
             >
               <Play className="w-3.5 h-3.5 fill-current" />
-              <span>{isRunningTests ? 'Executing Math Tests...' : 'Execute All 332 Tests'}</span>
+              <span>{isRunningTests ? 'Ejecutando Pruebas...' : 'Ejecutar Todas las Pruebas (8 Suites)'}</span>
             </button>
           </div>
 
           <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800 font-mono text-xs text-neutral-300 overflow-x-auto whitespace-pre">
-            {testOutput || 'Click "Execute All 332 Tests" to run live browser evaluation.'}
+            {testOutput || 'Haz clic en "Ejecutar Todas las Pruebas (8 Suites)" para auditar el motor en vivo.'}
           </div>
         </div>
       )}
@@ -150,26 +158,26 @@ STATUS: ALL MATHEMATICAL INVARIANTS & CONVERGENCE CONDITIONS VERIFIED
         <div className="space-y-4 text-xs text-neutral-300 leading-relaxed max-w-3xl">
           <h3 className="text-base font-bold text-white">Discounted Counterfactual Regret Minimization (DCFR)</h3>
           <p>
-            Lab de pensamiento implementa la formulación de Discounted CFR establecida por Noam Brown y Tuomas Sandholm (2019):
+            Lab Studio implementa la formulación de Discounted CFR establecida por Noam Brown y Tuomas Sandholm (2019):
           </p>
 
           <div className="p-4 bg-neutral-950 rounded-xl border border-neutral-800 font-mono space-y-2">
-            <div><strong>Discount Parameters:</strong></div>
-            <div>· α = 1.5 (Discounts positive regrets: R₊(I, a) *= t^α / (t^α + 1))</div>
-            <div>· β = 0.0 (Discounts negative regrets: R₋(I, a) *= t^β / (t^β + 1) = 0.5)</div>
-            <div>· γ = 2.0 (Discounts cumulative strategy: S(I, a) *= (t / (t + 1))^γ)</div>
+            <div><strong>Parámetros de Descuento:</strong></div>
+            <div>· α = 1.5 (Descuenta regrets positivos: R₊(I, a) *= t^α / (t^α + 1))</div>
+            <div>· β = 0.0 (Descuenta regrets negativos: R₋(I, a) *= t^β / (t^β + 1) = 0.5)</div>
+            <div>· γ = 2.0 (Descuenta estrategia acumulada: S(I, a) *= (t / (t + 1))^γ)</div>
           </div>
 
-          <h4 className="text-sm font-semibold text-white pt-2">Regret Matching+ & Strategy Derivation</h4>
+          <h4 className="text-sm font-semibold text-white pt-2">Regret Matching+ &amp; Derivación de Estrategia</h4>
           <p>
-            At each iteration t, for information set I and action a:
+            En cada iteración t, para el conjunto de información I y acción legal a:
           </p>
           <pre className="p-3 bg-neutral-950 rounded-lg border border-neutral-800 text-[11px] font-mono">
 {`σ(I, a) = max(0, R(I, a)) / ∑ max(0, R(I, b))`}
           </pre>
           <p>
-            When cumulative positive regret is zero, a uniform strategy 1/|A| is used to guarantee exploration.
-            The cumulative strategy is weighted by the acting player's reach probability π_i(h).
+            Cuando el regret positivo acumulado es cero, se asigna distribución uniforme 1/|A| para garantizar exploración.
+            La estrategia acumulada se pondera por la probabilidad de alcance π_i(h) del jugador activo y soporta Node-Locking porcentual mixto.
           </p>
         </div>
       )}
@@ -179,7 +187,7 @@ STATUS: ALL MATHEMATICAL INVARIANTS & CONVERGENCE CONDITIONS VERIFIED
         <div className="space-y-4 text-xs text-neutral-300 leading-relaxed max-w-3xl">
           <h3 className="text-base font-bold text-white">Arquitectura del Sistema</h3>
           <p>
-            Lab de pensamiento está estructurado en tres capas desacopladas:
+            Allin School (motor Lab Studio + TheTracker2) está estructurado en tres capas desacopladas:
           </p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="p-4 bg-neutral-950 rounded-xl border border-neutral-800">
@@ -207,20 +215,20 @@ STATUS: ALL MATHEMATICAL INVARIANTS & CONVERGENCE CONDITIONS VERIFIED
       {/* Tab 4: Windows Packaging */}
       {activeSubTab === 'windows' && (
         <div className="space-y-4 text-xs text-neutral-300 leading-relaxed max-w-3xl">
-          <h3 className="text-base font-bold text-white">Windows Desktop Packaging</h3>
+          <h3 className="text-base font-bold text-white">Empaquetado de Escritorio Windows</h3>
           <p>
-            This application is designed for instant offline execution. To package it as a standalone native Windows executable (.exe / installer):
+            Esta aplicación está diseñada para ejecución web/SaaS y offline. Para empaquetarla como ejecutable nativo en Windows (.exe / instalador):
           </p>
           <div className="p-4 bg-neutral-950 rounded-xl border border-neutral-800 font-mono space-y-2 text-[11px]">
-            <div className="text-neutral-500"># Option 1: Tauri (Rust backend + Web frontend)</div>
+            <div className="text-neutral-500"># Opción 1: Tauri (Backend Rust + Frontend Web)</div>
             <div>npm install -D @tauri-apps/cli</div>
             <div>npx tauri init</div>
             <div>npx tauri build --target x86_64-pc-windows-msvc</div>
-            <div className="pt-2 text-neutral-500"># Option 2: Electron Builder</div>
+            <div className="pt-2 text-neutral-500"># Opción 2: Electron Builder</div>
             <div>npx electron-builder --win --x64</div>
           </div>
           <p className="text-neutral-400 text-[11px]">
-            Full build scripts and GitHub Actions workflows are documented in <code className="text-white">docs/INSTALLATION_WINDOWS.md</code>.
+            Los scripts de compilación y flujos CI están documentados en <code className="text-white">docs/INSTALLATION_WINDOWS.md</code>.
           </p>
         </div>
       )}
@@ -228,17 +236,16 @@ STATUS: ALL MATHEMATICAL INVARIANTS & CONVERGENCE CONDITIONS VERIFIED
       {/* Tab 5: Build Status & Honesty */}
       {activeSubTab === 'status' && (
         <div className="space-y-4 text-xs text-neutral-300 leading-relaxed max-w-3xl">
-          <h3 className="text-base font-bold text-white">Estado de Construcción y Verificación</h3>
+          <h3 className="text-base font-bold text-white">Estado de Construcción y Verificación · Allin School</h3>
           <div className="p-4 bg-neutral-950 rounded-xl border border-neutral-800 space-y-2">
-            <div className="text-emerald-400 font-bold">✓ Totalmente Implementado y Matemáticamente Verificado:</div>
+            <div className="text-emerald-400 font-bold">Totalmente Implementado y Matemáticamente Verificado:</div>
             <ul className="list-disc list-inside space-y-1 text-neutral-300 text-[11px]">
-              <li>Evaluador de 7 cartas para Texas Hold'em con desempates exactos (18 tests pasando)</li>
-              <li>Matriz 13x13, 1326 combinaciones y filtro de bloqueadores (188 tests pasando)</li>
-              <li>Constructor de árbol de decisión con Check, Bet, Call, Fold, Raise, All-in (20 tests pasando)</li>
-              <li>Gráficos interactivos D3 de distribución de EV y líneas más rentables</li>
-              <li>Motor de pensamiento ideal con DCFR (α=1.5, β=0.0, γ=2.0) (102 tests pasando)</li>
-              <li>Entrenador interactivo con puntuación Elo y comparación de estrategias ideales</li>
-              <li>Gestor de escenarios con persistencia e importación/exportación JSON</li>
+              <li>Evaluador exacto de 7 cartas para Texas Hold&apos;em con desempates completos</li>
+              <li>Matriz 13×13, 1326 combinaciones y filtro automático de bloqueadores</li>
+              <li>Constructor de árbol multi-calle (Flop → Turn → River) con Check, Bet, Call, Fold, Raise y All-in</li>
+              <li>Gráficos interactivos D3.js de distribución de EV y rentabilidad por línea</li>
+              <li>Motor DCFR Lab Studio (α=1.5, β=0.0, γ=2.0) con cálculo real de p1EV/p2EV y Node-Locking mixto por porcentaje</li>
+              <li>Entrenador 6-Max en Vivo, Parser TheTracker2 multi-sala, Replayer calle por calle y Academia SM-2</li>
             </ul>
           </div>
         </div>

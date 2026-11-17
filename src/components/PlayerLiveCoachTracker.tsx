@@ -56,7 +56,7 @@ export const PlayerLiveCoachTracker: React.FC<PlayerLiveCoachTrackerProps> = ({
           <strong className="text-white font-mono">{profile.masteryScore}% Dominio</strong>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-950 text-blue-300 border border-blue-800 font-mono">
+          <span className="text-[10px] text-blue-300 font-mono font-semibold">
             {profile.styleProfile}
           </span>
           <span className="text-emerald-400 font-semibold text-[11px]">
@@ -78,8 +78,8 @@ export const PlayerLiveCoachTracker: React.FC<PlayerLiveCoachTrackerProps> = ({
           <div>
             <h4 className="text-xs font-bold text-white flex items-center gap-2">
               Auto-Aprendizaje & Repetición Espaciada SM-2
-              <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-blue-950 text-blue-300 border border-blue-800 font-mono">
-                Autosuficiente V3.1 Pro
+              <span className="text-[10px] text-blue-400 font-mono">
+                · Autosuficiente V4.2 Pro
               </span>
             </h4>
             <span className="text-[11px] text-neutral-400">

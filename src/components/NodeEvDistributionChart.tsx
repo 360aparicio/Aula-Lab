@@ -640,20 +640,20 @@ export const NodeEvDistributionChart: React.FC<NodeEvDistributionChartProps> = (
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <TrendingUp className="w-4 h-4 text-emerald-400" />
-            <h3 className="text-sm font-bold text-white tracking-tight flex items-center gap-2">
+            <h3 className="text-sm font-bold text-white tracking-tight flex items-center gap-2 flex-wrap">
               <span>Distribución de Valor Esperado (EV) por Línea</span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-400 border border-emerald-800 font-mono font-semibold">
-                D3 Interactive
+              <span className="text-[10px] text-emerald-400 font-mono font-semibold">
+                · D3 Interactivo
               </span>
               {strategyResult && strategyResult.localExploitability !== undefined && (
                 (strategyResult.localExploitability / bbUnit) >= 0.35 ? (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-950/90 text-rose-300 border border-rose-500 font-mono font-bold animate-pulse flex items-center gap-1">
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-rose-950/90 text-rose-300 border border-rose-500 font-mono font-bold flex items-center gap-1">
                     <AlertCircle className="w-3 h-3 text-rose-400" />
-                    <span>🚨 Alerta de Convergencia (+{(strategyResult.localExploitability / bbUnit).toFixed(2)} BB)</span>
+                    <span>Alerta de Convergencia (+{(strategyResult.localExploitability / bbUnit).toFixed(2)} BB)</span>
                   </span>
                 ) : (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-400 border border-emerald-800 font-mono font-semibold">
-                    ✓ En Equilibrio
+                  <span className="text-[10px] text-emerald-400 font-mono font-semibold">
+                    · En Equilibrio
                   </span>
                 )
               )}

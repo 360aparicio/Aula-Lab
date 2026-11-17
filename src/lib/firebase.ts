@@ -9,7 +9,11 @@ import { initializeApp } from 'firebase/app';
 import {
   getAuth,
   GoogleAuthProvider,
+  browserLocalPersistence,
+  setPersistence,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signOut,
   type UserCredential
 } from 'firebase/auth';
@@ -23,6 +27,8 @@ import firebaseConfig from '../../firebase-applet-config.json';
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
+void setPersistence(auth, browserLocalPersistence).catch(() => {});
+export const authRedirectPromise: Promise<UserCredential | null> = getRedirectResult(auth).catch(() => null);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
@@ -90,8 +96,33 @@ async function testConnection(): Promise<void> {
 
 void testConnection();
 
+export function mapAuthErrorToSpanish(err: unknown): string {
+  const code = typeof err === 'object' && err !== null && 'code' in err ? String((err as { code: unknown }).code) : '';
+  if (code === 'auth/popup-blocked') {
+    return 'El navegador bloqueó la ventana de Google dentro del marco. Usa "Iniciar con Redirección" o abre en pestaña nueva.';
+  }
+  if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+    return 'Se cerró la ventana de acceso antes de completar el inicio de sesión con Google.';
+  }
+  if (code === 'auth/unauthorized-domain') {
+    return 'Dominio no autorizado en Firebase Auth. Abre la aplicación en el dominio principal o autorízalo en Firebase Console.';
+  }
+  if (code === 'auth/network-request-failed') {
+    return 'Error de red conectando con Google Auth. Verifica tu conexión e intenta de nuevo.';
+  }
+  return err instanceof Error ? err.message : 'No se pudo iniciar sesión con Google.';
+}
+
 export async function signInWithGoogle(): Promise<UserCredential> {
-  return signInWithPopup(auth, googleProvider);
+  try {
+    return await signInWithPopup(auth, googleProvider);
+  } catch (err) {
+    throw new Error(mapAuthErrorToSpanish(err));
+  }
+}
+
+export async function signInWithGoogleRedirect(): Promise<void> {
+  await signInWithRedirect(auth, googleProvider);
 }
 
 export async function signOutUser(): Promise<void> {

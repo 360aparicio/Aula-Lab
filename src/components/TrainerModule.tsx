@@ -87,6 +87,7 @@ interface TrainerModuleProps {
   onSwapPositions?: () => void;
   onSelectHeroCards?: (card1: Card, card2: Card) => void;
   onBack?: () => void;
+  bbUnit?: number;
 }
 
 export const TrainerModule: React.FC<TrainerModuleProps> = ({
@@ -106,7 +107,8 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
   onVillainPosChange: propOnVillainPosChange,
   onSwapPositions: propOnSwapPositions,
   onSelectHeroCards: propOnSelectHeroCards,
-  onBack
+  onBack,
+  bbUnit = 2
 }) => {
   // Table Positions
   const [internalHeroPos, setInternalHeroPos] = useState<TablePosition>(
@@ -160,6 +162,8 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
   const [attempts, setAttempts] = useState<TrainingAttempt[]>(loadTrainingAttempts());
   const [filterGrade, setFilterGrade] = useState<string>('all');
   const [activeTab, setActiveTab] = useState<'practice' | 'history' | 'weaknesses'>('practice');
+  const [confirmClearHistory, setConfirmClearHistory] = useState<boolean>(false);
+  const [confirmClearLearner, setConfirmClearLearner] = useState<boolean>(false);
 
   // Learner Service state for weakness patterns tracking
   const [learnerSummary, setLearnerSummary] = useState(() => LearnerService.getInstance().getLearnerSummary());
@@ -177,6 +181,7 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
   const villainCombos = heroRole === 'OOP' ? ipCombos : oopCombos;
 
   const autoOpenedKeyRef = useRef<string | null>(null);
+  const recentHeroKeysRef = useRef<string[]>([]);
 
   const resetHandProgressionState = (nodeToUse: ActionNode = activeNode) => {
     const initialStreet = nodeToUse.street || (boardCards.length >= 5 ? 'river' : boardCards.length === 4 ? 'turn' : 'flop');
@@ -194,12 +199,21 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
     setShowdownResult(null);
   };
 
-  // Deal a new random hand from range
+  // Deal a new random hand from range without repeating recently dealt combos
   const startNewHand = () => {
     if (heroCombos.length === 0 || villainCombos.length === 0) return;
 
-    const dealtHero = dealRandomHeroHand(heroCombos);
+    if (recentHeroKeysRef.current.length >= heroCombos.length) {
+      recentHeroKeysRef.current = heroHand ? [heroHand.combo.key] : [];
+    }
+
+    const dealtHero = dealRandomHeroHand(heroCombos, recentHeroKeysRef.current);
     if (!dealtHero) return;
+
+    recentHeroKeysRef.current = [
+      ...recentHeroKeysRef.current.filter(k => k !== dealtHero.combo.key).slice(-9),
+      dealtHero.combo.key
+    ];
 
     const dealtVillain = dealRandomVillainHand(villainCombos, dealtHero);
 
@@ -376,7 +390,7 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
     if (!activeStrat) return;
 
     const actKey = action.actionKey || action.type;
-    const fb = evaluateUserAction(actKey, heroHand, activeStrat, currentNode.pot);
+    const fb = evaluateUserAction(actKey, heroHand, activeStrat, currentNode.pot, bbUnit);
 
     // Update stats
     const updatedStats: TrainerUserStats = {
@@ -426,7 +440,7 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
       boardCards: practiceBoard,
       heroPos,
       villainPos,
-      potBB: Math.round((currentNode.pot / 2) * 10) / 10,
+      potBB: Math.round((currentNode.pot / (bbUnit > 0 ? bbUnit : 2)) * 10) / 10,
       chosenAction: action.label || actKey,
       bestAction: fb.bestAction,
       chosenFrequency: fb.chosenFrequency,
@@ -762,11 +776,10 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
     }
   };
 
-  const handleClearHistory = () => {
-    if (confirm('Clear all training attempt logs?')) {
-      clearTrainingAttempts();
-      setAttempts([]);
-    }
+  const handleConfirmClearHistory = () => {
+    clearTrainingAttempts();
+    setAttempts([]);
+    setConfirmClearHistory(false);
   };
 
   const currentTier = getEloTier(stats.elo);
@@ -903,7 +916,7 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
       <div className="bg-neutral-900 border-2 border-emerald-500/60 rounded-xl p-4 sm:p-5 shadow-xl flex flex-col gap-3">
         <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2.5">
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
             <h2 className="text-xs sm:text-sm font-bold uppercase tracking-wider text-white flex items-center gap-2">
               <span>🎯 Selección de Posiciones (Hero vs Villano) y Mis Cartas</span>
             </h2>
@@ -1206,11 +1219,11 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
                 <div className="mt-1">
                   {!feedback ? (
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-neutral-900/90 text-neutral-400 border border-neutral-800 flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                       <span>Monitoreo Activo (Tolerancia 5% Pot)</span>
                     </span>
                   ) : feedback.isMistakeThresholdExceeded ? (
-                    <span className="text-[10px] font-mono font-bold px-2.5 py-0.5 rounded bg-rose-950/90 text-rose-300 border border-rose-500/80 shadow-xs flex items-center gap-1 animate-pulse">
+                    <span className="text-[10px] font-mono font-bold px-2.5 py-0.5 rounded bg-rose-950/90 text-rose-300 border border-rose-500/80 shadow-xs flex items-center gap-1">
                       <span className="w-2 h-2 rounded-full bg-rose-500" />
                       <span>¡UMBRAL SUPERADO! ({feedback.evLossPercentOfPot}% EV Loss)</span>
                     </span>
@@ -1224,9 +1237,9 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
               </div>
 
               <div className="text-right font-mono">
-                <div className="text-xs text-neutral-400">Pot Size</div>
+                <div className="text-xs text-neutral-400">Tamaño del Bote</div>
                 <div className="text-base font-bold text-emerald-400 tabular-nums">
-                  {currentNode.pot} chips ({Math.round(currentNode.pot / 2)} BB)
+                  {currentNode.pot} fichas ({Math.round((currentNode.pot / (bbUnit > 0 ? bbUnit : 2)) * 10) / 10} BB)
                 </div>
               </div>
             </div>
@@ -1304,7 +1317,7 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
 
               {/* Highlight Banner when Mistake Threshold is exceeded */}
               {feedback && feedback.isMistakeThresholdExceeded && (
-                <div className="mt-2 p-3.5 bg-rose-950/90 border-2 border-rose-500 rounded-xl text-left shadow-2xl max-w-lg w-full animate-pulse">
+                <div className="mt-2 p-3.5 bg-rose-950/90 border-2 border-rose-500 rounded-xl text-left shadow-2xl max-w-lg w-full">
                   <div className="flex items-center justify-between gap-2 border-b border-rose-800/80 pb-2 mb-2">
                     <span className="text-xs font-black uppercase tracking-wider text-rose-200 flex items-center gap-1.5">
                       <AlertOctagon className="w-4 h-4 text-rose-400" />
@@ -1424,7 +1437,7 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
                           {feedback.gradeLabel}
                         </span>
                         {feedback.isMistakeThresholdExceeded && (
-                          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-rose-950 text-rose-300 border border-rose-500/80 flex items-center gap-1 animate-pulse">
+                          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-rose-950 text-rose-300 border border-rose-500/80 flex items-center gap-1">
                             <AlertOctagon className="w-3 h-3 text-rose-400" />
                             <span>&gt;5% EV Loss ({feedback.evLossPercentOfPot}% Pot)</span>
                           </span>
@@ -1490,6 +1503,7 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
             heroHand={heroHand}
             chosenActionType={(feedback || lastStepFeedback)?.chosenAction}
             potSize={currentNode.pot}
+            bbUnit={bbUnit}
           />
         </div>
       )}
@@ -1544,13 +1558,33 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
               </div>
 
               {attempts.length > 0 && (
-                <button
-                  onClick={handleClearHistory}
-                  className="p-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white rounded-lg transition-colors"
-                  title="Clear history"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                confirmClearHistory ? (
+                  <div className="flex items-center gap-1.5 text-xs">
+                    <button
+                      type="button"
+                      onClick={handleConfirmClearHistory}
+                      className="px-2.5 py-1 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold cursor-pointer whitespace-nowrap"
+                    >
+                      Confirmar Borrado
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmClearHistory(false)}
+                      className="px-2 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded-lg cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmClearHistory(true)}
+                    className="p-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white rounded-lg transition-colors cursor-pointer"
+                    title="Limpiar historial"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )
               )}
             </div>
           </div>
@@ -1749,18 +1783,36 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
                 <AlertOctagon className="w-4 h-4 text-rose-400" />
                 <span>Registro Detallado de Decisiones con Desviación &gt; 5% EV Loss:</span>
               </h4>
-              <button
-                type="button"
-                onClick={() => {
-                  if (confirm('¿Limpiar registro de debilidades de Learner?')) {
-                    LearnerService.getInstance().clearMistakes();
-                  }
-                }}
-                className="text-[11px] text-neutral-500 hover:text-red-400 transition-colors flex items-center gap-1 cursor-pointer"
-              >
-                <Trash2 className="w-3 h-3" />
-                <span>Limpiar Registro</span>
-              </button>
+              {confirmClearLearner ? (
+                <div className="flex items-center gap-1.5 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      LearnerService.getInstance().clearMistakes();
+                      setConfirmClearLearner(false);
+                    }}
+                    className="px-2.5 py-1 rounded bg-red-600 hover:bg-red-500 text-white font-bold cursor-pointer whitespace-nowrap"
+                  >
+                    Confirmar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmClearLearner(false)}
+                    className="px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmClearLearner(true)}
+                  className="text-[11px] text-neutral-500 hover:text-red-400 transition-colors flex items-center gap-1 cursor-pointer"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  <span>Limpiar Registro</span>
+                </button>
+              )}
             </div>
 
             {LearnerService.getInstance().getMistakes().length === 0 ? (

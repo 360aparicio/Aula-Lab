@@ -17,6 +17,7 @@ import { Card, SUIT_SYMBOLS } from '../engine/cards';
 import { ActionNode } from '../engine/gameTree';
 import { TablePosition } from './HandAndPositionBar';
 import { OpponentProfile, OPPONENT_PROFILES } from '../engine/preflopMatchups';
+import { PokerGlossaryTip } from './PokerGlossaryTip';
 import {
   PieChart,
   Coins,
@@ -77,7 +78,7 @@ export const HandContextBar: React.FC<HandContextBarProps> = ({
 
   if (sprValue < 2.5) {
     sprCategory = 'low';
-    sprBadgeClass = 'bg-rose-950/90 text-rose-300 border-rose-500/60 animate-pulse';
+    sprBadgeClass = 'bg-rose-950/90 text-rose-300 border-rose-500/60';
     sprLabel = 'SPR Bajo (Compromiso Total)';
     sprStrategicGuidance = 'Pot Committed: Overpairs y Top Pair Top Kicker juegan por stacks sin contemplar folds.';
   } else if (sprValue > 6.5) {
@@ -130,7 +131,7 @@ export const HandContextBar: React.FC<HandContextBarProps> = ({
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-neutral-400 flex items-center gap-1.5">
               <PieChart className="w-3.5 h-3.5 text-cyan-400" />
-              <span>SPR de la Mano</span>
+              <PokerGlossaryTip term="SPR" label="SPR de la Mano" />
             </span>
             <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold border ${sprBadgeClass}`}>
               {sprLabel}

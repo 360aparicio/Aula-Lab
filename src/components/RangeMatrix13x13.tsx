@@ -5,7 +5,7 @@
  * Interactive 13x13 Range Matrix Component with Multi-Brush, Presets & Blockers.
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '../engine/cards';
 import { CANONICAL_GRID, getActiveComboCount } from '../engine/combos';
 import {
@@ -67,7 +67,7 @@ export const RangeMatrix13x13: React.FC<RangeMatrixProps> = ({
       onChange(parsed);
       setTextError(null);
     } catch {
-      setTextError('Invalid range syntax');
+      setTextError('Sintaxis de rango inválida');
     }
   };
 
@@ -123,7 +123,7 @@ export const RangeMatrix13x13: React.FC<RangeMatrixProps> = ({
               defaultValue=""
               className="text-xs bg-neutral-950 border border-neutral-800 rounded px-2 py-1 text-neutral-300 focus:outline-hidden"
             >
-              <option value="" disabled>Load Preset...</option>
+              <option value="" disabled>Cargar Preset...</option>
               {Object.keys(RANGE_PRESETS).map(key => (
                 <option key={key} value={key}>{key}</option>
               ))}
@@ -139,7 +139,7 @@ export const RangeMatrix13x13: React.FC<RangeMatrixProps> = ({
               onClick={handleClear}
               className="text-xs px-2 py-1 rounded bg-neutral-950 border border-neutral-800 text-neutral-400 hover:text-white transition-colors"
             >
-              Clear
+              Limpiar
             </button>
           </div>
         )}
@@ -153,7 +153,7 @@ export const RangeMatrix13x13: React.FC<RangeMatrixProps> = ({
           </span>
         ) : (
           <div className="flex items-center gap-1.5">
-            <span className="text-neutral-500 font-medium">Brush Weight:</span>
+            <span className="text-neutral-500 font-medium">Peso Pincel:</span>
             {[1.0, 0.75, 0.5, 0.25, 0.0].map(w => (
               <button
                 key={w}
@@ -175,7 +175,7 @@ export const RangeMatrix13x13: React.FC<RangeMatrixProps> = ({
           <div className="text-xs text-neutral-400 font-mono flex items-center gap-2">
             <span className="text-white font-bold">{hoveredHand}</span>
             <span>
-              Weight: {Math.round((range.weights[hoveredHand] || 0) * 100)}%
+              Peso: {Math.round((range.weights[hoveredHand] || 0) * 100)}%
             </span>
             <span>
               Combos: {getActiveComboCount(hoveredHand, boardCards)}
@@ -271,15 +271,15 @@ export const RangeMatrix13x13: React.FC<RangeMatrixProps> = ({
           <div className="flex items-center gap-3">
             <span className="flex items-center gap-1">
               <span className="w-2.5 h-2.5 bg-emerald-600 rounded-xs"></span>
-              Pairs (Diagonal)
+              Parejas (Diagonal)
             </span>
             <span className="flex items-center gap-1">
               <span className="w-2.5 h-2.5 bg-cyan-600 rounded-xs"></span>
-              Suited (Top Right)
+              Suited (Sup. Derecha)
             </span>
             <span className="flex items-center gap-1">
               <span className="w-2.5 h-2.5 bg-amber-600 rounded-xs"></span>
-              Offsuit (Bottom Left)
+              Offsuit (Inf. Izquierda)
             </span>
           </div>
         </div>
@@ -295,14 +295,14 @@ export const RangeMatrix13x13: React.FC<RangeMatrixProps> = ({
               type="text"
               value={rangeText}
               onChange={(e) => setRangeText(e.target.value)}
-              placeholder="Standard range notation e.g. AA,KK,AKs-ATs,AKo:0.5"
+              placeholder="Notación estándar ej. AA,KK,AKs-ATs,AKo:0.5"
               className="flex-1 bg-neutral-950 border border-neutral-800 rounded px-2.5 py-1.5 text-xs text-neutral-200 font-mono focus:outline-hidden focus:border-neutral-600"
             />
             <button
               onClick={handleTextApply}
               className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded font-medium text-xs whitespace-nowrap transition-colors cursor-pointer"
             >
-              Apply
+              Aplicar
             </button>
           </div>
         )}

@@ -151,7 +151,7 @@ export const ThinkingProcessWizard: React.FC<ThinkingProcessWizardProps> = ({
       heroCards: cardsStr,
       board: boardStr,
       street: currentStreet,
-      category: boardAnalysis.wetness === 'Seco' ? 'Flop Seco (Dry)' : boardAnalysis.wetness === 'Monótono' ? 'Flop Monótono' : 'Flop Coordinado (Wet)',
+      category: boardAnalysis.wetness.includes('Seco') ? 'Flop Seco (Dry)' : boardAnalysis.wetness.includes('Monótono') || boardAnalysis.suitTexture.includes('Monocolor') ? 'Flop Monótono' : 'Flop Coordinado (Wet)',
       potBB: currentStreet === 'flop' ? matchupProfile.potBB : currentStreet === 'turn' ? Number((matchupProfile.potBB * 1.8).toFixed(1)) : Number((matchupProfile.potBB * 2.8).toFixed(1)),
       chosenAction: 'Analizada en Wizard',
       optimalAction: 'Recomendación Action Gauge',
@@ -235,7 +235,7 @@ export const ThinkingProcessWizard: React.FC<ThinkingProcessWizardProps> = ({
     boardCards.forEach(c => { rankCounts[c.rank] = (rankCounts[c.rank] || 0) + 1; });
     const isPaired = Object.values(rankCounts).some(cnt => cnt >= 2);
 
-    const highRank = boardCards[0]?.rank || 'A';
+    const highRank = '23456789TJQKA'[ranks[0]] || boardCards[0]?.rank || 'A';
     const isAceHigh = boardCards.some(c => c.rank === 'A');
     const isKingHigh = boardCards.some(c => c.rank === 'K');
 
@@ -360,8 +360,8 @@ export const ThinkingProcessWizard: React.FC<ThinkingProcessWizardProps> = ({
             </span>
             <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
               <span>Proceso de Pensamiento Paso a Paso</span>
-              <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-700">
-                Ajuste Automático
+              <span className="text-[10px] font-mono font-semibold text-emerald-400">
+                · Ajuste Automático
               </span>
             </h2>
           </div>

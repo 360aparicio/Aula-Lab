@@ -29,19 +29,19 @@ import {
 const PRESET_TOPICS = [
   {
     label: 'Meta NL2–NL100 6-Max Actual',
-    query: 'No Limit Holdem 6-max cash games GTO solver population tendencies exploitative adjustments NL10 NL50 2025'
+    query: 'No Limit Holdem 6-max cash games Nash equilibrium population tendencies exploitative adjustments NL10 NL50 2025'
   },
   {
-    label: 'C-Bet 3-Bet Pots (PioSolver / GTO Wizard)',
-    query: '6-max NLHE 3-bet pots flop cbet sizing 25% 33% solver frequency heuristics'
+    label: 'C-Bet en Botes 3-Bet (Lab Studio Meta)',
+    query: '6-max NLHE 3-bet pots flop cbet sizing 25% 33% equilibrium frequency heuristics'
   },
   {
     label: 'Overbet Polarizado en Turn & River',
-    query: 'GTO poker turn river overbet polarization 125% 150% pot solver strategy'
+    query: 'Nash equilibrium poker turn river overbet polarization 125% 150% pot strategy'
   },
   {
     label: 'Defensa BB vs BTN & Squeeze',
-    query: '6-max BB defense vs BTN open raise squeeze sizing GTO solver ranges'
+    query: '6-max BB defense vs BTN open raise squeeze sizing Nash equilibrium ranges'
   }
 ];
 
@@ -90,11 +90,11 @@ export const SolverMetaPanel: React.FC = () => {
           </div>
           <div>
             <h2 className="text-xl font-bold text-white">
-              Inteligencia Solver Auto-Actualizable (Internet + Usuarios + DCFR)
+              Radar Web Lab Studio (Internet + Usuarios + DCFR)
             </h2>
             <p className="text-xs text-neutral-400 mt-1 max-w-2xl leading-relaxed">
-              Combina el equilibrio matemático local DCFR con fugas reales aprendidas de los usuarios y búsqueda en vivo
-              sobre tendencias de solvers (GTO Wizard / PioSolver) para recalibrar al Coach automáticamente.
+              Combina el equilibrio matemático local DCFR de Lab Studio con fugas reales aprendidas de los usuarios y búsqueda en vivo
+              sobre tendencias de juego moderno para recalibrar al Coach automáticamente.
             </p>
           </div>
         </div>
@@ -130,7 +130,7 @@ export const SolverMetaPanel: React.FC = () => {
                 type="text"
                 value={customQuery}
                 onChange={(e) => setCustomQuery(e.target.value)}
-                placeholder="Ej: Estrategia GTO en flops monótonos BTN vs BB o sizing de 4-bet..."
+                placeholder="Ej: Estrategia Nash en flops monótonos BTN vs BB o sizing de 4-bet..."
                 className="flex-1 bg-neutral-900 border border-neutral-800 focus:border-blue-500 rounded-xl px-4 py-2 text-xs text-white placeholder-neutral-500 outline-none"
               />
               <button
@@ -201,7 +201,7 @@ export const SolverMetaPanel: React.FC = () => {
             <span className="text-[11px] font-mono text-neutral-500">
               {meta.lastInternetSyncAt
                 ? `Última sync: ${new Date(meta.lastInternetSyncAt).toLocaleTimeString()}`
-                : 'Base GTO + Colectiva'}
+                : 'Base Nash + Colectiva'}
             </span>
           </div>
 
@@ -212,7 +212,7 @@ export const SolverMetaPanel: React.FC = () => {
                   <div>
                     <div className="text-xs font-bold text-white">{rule.topic}</div>
                     <div className="text-[11px] text-neutral-400 font-mono mt-0.5">
-                      Calle: {rule.street.toUpperCase()} · Textura: {rule.texture} · Frec GTO: {rule.gtoFrequencyPct}%
+                      Calle: {rule.street.toUpperCase()} · Textura: {rule.texture} · Frec. Nash: {rule.gtoFrequencyPct}%
                     </div>
                   </div>
                   <span className={`text-[10px] font-mono px-2 py-0.5 rounded border shrink-0 ${

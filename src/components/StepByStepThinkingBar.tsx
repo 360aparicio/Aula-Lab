@@ -116,7 +116,7 @@ export const StepByStepThinkingBar: React.FC<StepByStepThinkingBarProps> = ({
 
     return {
       wetness,
-      highCard: boardCards[0]?.rank || 'A',
+      highCard: '23456789TJQKA'[ranks[0]] || boardCards[0]?.rank || 'A',
       suitTexture,
       rangeAdvantage
     };
@@ -173,8 +173,8 @@ export const StepByStepThinkingBar: React.FC<StepByStepThinkingBarProps> = ({
           <div>
             <h2 className="text-sm font-bold text-white tracking-tight flex items-center gap-2">
               <span>Proceso de Pensamiento Paso a Paso</span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800 font-bold">
-                Sincronización en Vivo
+              <span className="text-[10px] font-mono text-emerald-400 font-bold">
+                · Sincronización en Vivo
               </span>
             </h2>
             <p className="text-[11px] text-neutral-400">

@@ -149,7 +149,7 @@ export const HandAndPositionBar: React.FC<HandAndPositionBarProps> = ({
       {/* Title strip */}
       <div className="flex items-center justify-between border-b border-neutral-800 pb-2">
         <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="w-2 h-2 rounded-full bg-emerald-500" />
           <h2 className="text-xs font-bold uppercase tracking-wider text-white">
             Configuración de Posición y Cartas del Jugador (Hero)
           </h2>

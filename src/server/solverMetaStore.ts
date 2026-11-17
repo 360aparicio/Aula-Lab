@@ -52,7 +52,7 @@ export interface SolverMetaState {
   citations: SolverSourceCitation[];
 }
 
-const CACHE_FILE = path.join(os.tmpdir(), 'lab-studio-solver-meta-v31.json');
+const CACHE_FILE = path.join(os.tmpdir(), 'allin-school-lab-meta-v1.json');
 
 const BASELINE_RULES: SolverMetaRule[] = [
   {
@@ -140,11 +140,11 @@ let cachedState: SolverMetaState | null = null;
 
 function createDefaultState(): SolverMetaState {
   return {
-    version: '3.1.0-adaptive',
+    version: '4.3.0-lab-studio',
     lastInternetSyncAt: null,
     lastCollectiveUpdateAt: Date.now() - 3600000,
     totalUserSamplesLearned: 42,
-    internetQuerySummary: 'Base GTO 6-Max cargada. Pulsa "Sincronizar Solvers & Internet" para consultar tendencias actuales en vivo.',
+    internetQuerySummary: 'Base Equilibrio Nash 6-Max cargada en Lab Studio. Pulsa "Sincronizar Red & Lab Studio" para consultar tendencias actuales en vivo.',
     rules: BASELINE_RULES,
     collectiveLeaks: INITIAL_COLLECTIVE_LEAKS,
     citations: []

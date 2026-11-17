@@ -31,6 +31,7 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({
   const { isAdmin } = useAuth();
   const [scenarios, setScenarios] = useState<SavedScenarioRecord[]>(loadAllScenarios());
   const [importStatus, setImportStatus] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const handleExport = () => {
     const json = exportScenariosToJson(scenarios);
@@ -53,19 +54,18 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({
       const res = importScenariosFromJson(content);
       if (res.importedCount > 0) {
         setScenarios(loadAllScenarios());
-        setImportStatus(`Successfully imported ${res.importedCount} scenarios!`);
+        setImportStatus(`Se importaron ${res.importedCount} escenarios correctamente.`);
       } else {
-        setImportStatus(`Import failed: ${res.errors.join(', ')}`);
+        setImportStatus(`Error al importar: ${res.errors.join(', ')}`);
       }
     };
     reader.readAsText(file);
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm('Delete this scenario?')) {
-      deleteScenario(id);
-      setScenarios(loadAllScenarios());
-    }
+  const handleConfirmDelete = (id: string) => {
+    deleteScenario(id);
+    setConfirmDeleteId(null);
+    setScenarios(loadAllScenarios());
   };
 
   return (
@@ -83,7 +83,7 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({
           {isAdmin ? (
             <label className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg text-xs font-semibold cursor-pointer transition-colors">
               <Upload className="w-3.5 h-3.5" />
-              <span>Import JSON</span>
+              <span>Importar JSON</span>
               <input
                 type="file"
                 accept=".json"
@@ -103,7 +103,7 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({
             className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>Export Library</span>
+            <span>Exportar Biblioteca</span>
           </button>
         </div>
       </div>
@@ -127,13 +127,33 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({
                   {sc.street}
                 </span>
                 {sc.isCustom && isAdmin && (
-                  <button
-                    onClick={() => handleDelete(sc.id)}
-                    className="text-neutral-500 hover:text-red-400 transition-colors p-1 cursor-pointer"
-                    title="Delete custom scenario"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  confirmDeleteId === sc.id ? (
+                    <div className="flex items-center gap-1 text-[10px]">
+                      <button
+                        type="button"
+                        onClick={() => handleConfirmDelete(sc.id)}
+                        className="px-2 py-0.5 rounded bg-red-600 hover:bg-red-500 text-white font-bold cursor-pointer"
+                      >
+                        Confirmar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteId(null)}
+                        className="px-1.5 py-0.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 cursor-pointer"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteId(sc.id)}
+                      className="text-neutral-500 hover:text-red-400 transition-colors p-1 cursor-pointer"
+                      title="Eliminar escenario personalizado"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )
                 )}
               </div>
 

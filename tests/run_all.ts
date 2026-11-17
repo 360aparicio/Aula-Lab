@@ -10,6 +10,9 @@ import { runRangeTests } from './range.test';
 import { runGameTreeTests } from './gameTree.test';
 import { runKuhnTests } from './kuhn.test';
 import { runDCFRTests } from './dcfr.test';
+import { runPersonalizationTests } from './personalization.test';
+import { runV39ProTests } from './v39pro.test';
+import { runGtoAuditTests } from './gto_audit.test';
 
 async function runAll() {
   console.log('====================================================');
@@ -26,11 +29,14 @@ async function runAll() {
     { name: 'Game Decision Tree Builder', fn: runGameTreeTests },
     { name: 'Kuhn Poker Nash Reference', fn: runKuhnTests },
     { name: 'Discounted CFR (DCFR) Subgame Solver', fn: runDCFRTests },
+    { name: 'Per-User Isolation & Non-Repeating Pools', fn: runPersonalizationTests },
+    { name: 'V3.9 Pro Simulator, PT4 & Diagnostic Suite', fn: runV39ProTests },
+    { name: 'V4.2 World-Class GTO Mathematical Audit Suite', fn: runGtoAuditTests },
   ];
 
   for (const suite of suites) {
     console.log(`\n--- Test Suite: ${suite.name} ---`);
-    const res = suite.fn();
+    const res = await suite.fn();
     totalPassed += res.passed;
     totalFailed += res.failed;
     allErrors.push(...res.errors);

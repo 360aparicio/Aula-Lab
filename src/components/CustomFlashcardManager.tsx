@@ -29,6 +29,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { AutoLearningEngine, calculateSM2, HandHistoryRecord } from '../engine/autoLearningEngine';
+import { readScopedItem, writeScopedItem } from '../lib/userStorage';
 
 export interface SM2Flashcard {
   id: string;
@@ -93,7 +94,7 @@ const INITIAL_CARDS: SM2Flashcard[] = [
 export const CustomFlashcardManager: React.FC = () => {
   const [cards, setCards] = useState<SM2Flashcard[]>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
+      const saved = readScopedItem(STORAGE_KEY);
       if (saved) return JSON.parse(saved);
     } catch (e) {}
     return INITIAL_CARDS;
@@ -115,10 +116,10 @@ export const CustomFlashcardManager: React.FC = () => {
   const [newCategory, setNewCategory] = useState('Flops Secos (Dry)');
   const [newRule, setNewRule] = useState('');
 
-  // Save to localStorage & update AutoLearningEngine counts
+  // Save to scoped userStorage & update AutoLearningEngine counts
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(cards));
+      writeScopedItem(STORAGE_KEY, JSON.stringify(cards));
       AutoLearningEngine.getInstance().updateSM2Counts();
     } catch (e) {}
   }, [cards]);
@@ -127,7 +128,7 @@ export const CustomFlashcardManager: React.FC = () => {
   useEffect(() => {
     const handleUpdate = () => {
       try {
-        const saved = localStorage.getItem(STORAGE_KEY);
+        const saved = readScopedItem(STORAGE_KEY);
         if (saved) setCards(JSON.parse(saved));
         setCollectedHands(AutoLearningEngine.getInstance().getProfile().collectedHands || []);
       } catch (e) {}

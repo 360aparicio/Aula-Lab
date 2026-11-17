@@ -8,75 +8,74 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { auth, db, signInWithGoogle, signOutUser, handleFirestoreError, OperationType } from '../lib/firebase';
+import { collection, doc, getDoc, limit, onSnapshot, query } from 'firebase/firestore';
 import {
+  auth,
+  db,
+  authRedirectPromise,
+  signInWithGoogle,
+  signInWithGoogleRedirect,
+  signOutUser,
+  mapAuthErrorToSpanish,
+  handleFirestoreError,
+  OperationType
+} from '../lib/firebase';
+import {
+  hydrateLocalStateFromCloud,
   runFullCloudSync,
   fetchUserCloudSummary,
   isBootstrappedAdminUser,
+  buildBootstrappedAdminProfile,
   mapSnapshotToUserProfile,
   getDefaultPlanPermissions,
-  type UserProfileDoc,
+  type UserProfileDoc
+} from '../lib/cloudSync';
+import {
+  DEFAULT_PLAN_CONFIGS,
+  mergePlanConfig,
+  getAdminConsoleUrl,
+  type LabSectionId,
+  type PlanConfigDoc,
   type PlanPermissions,
   type PlanTier
-} from '../lib/cloudSync';
-import { SM2_UPDATE_EVENT } from '../engine/spacedRepetition';
-import { LEARNER_UPDATE_EVENT } from '../engine/learner';
+} from '../lib/planCatalog';
+import { setActiveStorageUserUid } from '../lib/userStorage';
+import { SpacedRepetitionManager, SM2_UPDATE_EVENT } from '../engine/spacedRepetition';
+import { LearnerService, LEARNER_UPDATE_EVENT } from '../engine/learner';
+import { AutoLearningEngine } from '../engine/autoLearningEngine';
 
 export type CloudSyncStatus = 'local_only' | 'syncing' | 'synced' | 'error';
-export type ScreenMode = 'user' | 'admin';
 
 interface AuthContextValue {
   user: User | null;
   userProfile: UserProfileDoc | null;
   isAuthReady: boolean;
   isAdmin: boolean;
+  isOwnerAdmin: boolean;
   isPlanActive: boolean;
   planTier: PlanTier;
   planPermissions: PlanPermissions;
-  screenMode: ScreenMode;
-  switchScreenMode: (mode: ScreenMode) => void;
-  adminLoginPortalOpen: boolean;
-  setAdminLoginPortalOpen: (open: boolean) => void;
+  activePlanConfig: PlanConfigDoc;
+  allPlanConfigs: Record<PlanTier, PlanConfigDoc>;
+  canAccessSection: (section: LabSectionId) => boolean;
+  verifyAdminSession: () => Promise<boolean>;
+  openAdminConsole: () => void;
   syncStatus: CloudSyncStatus;
   lastSyncedAt: number | null;
   cloudCounts: { sm2: number; mistakes: number };
   authError: string | null;
   loginAsUser: () => Promise<void>;
-  loginAsAdmin: () => Promise<void>;
+  loginAsUserRedirect: () => Promise<void>;
   returnToMainEntry: () => Promise<void>;
   syncNow: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
 
-const LOGIN_INTENT_KEY = 'lab_studio_login_intent';
-const SCREEN_MODE_KEY = 'lab_studio_screen_mode';
-
-function readSessionValue(key: string): string | null {
-  try {
-    return sessionStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function writeSessionValue(key: string, val: string | null): void {
-  try {
-    if (val === null) {
-      sessionStorage.removeItem(key);
-    } else {
-      sessionStorage.setItem(key, val);
-    }
-  } catch {
-    // ignore
-  }
-}
-
-function isProfileAuthorizedAdmin(firebaseUser: User, profile: UserProfileDoc | null): boolean {
-  if (!firebaseUser.emailVerified) return false;
+function isProfileAuthorizedAdmin(firebaseUser: User | null, profile: UserProfileDoc | null): boolean {
+  if (!firebaseUser || !firebaseUser.emailVerified) return false;
   if (isBootstrappedAdminUser(firebaseUser)) return true;
-  if (!profile || profile.planActive === false) return false;
-  return profile.role === 'admin' || profile.planPermissions?.planAdmin === true;
+  if (!profile || profile.planActive === false || profile.isManualPlaceholder) return false;
+  return profile.role === 'admin' && profile.planPermissions?.planAdmin === true;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -85,29 +84,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfileDoc | null>(null);
   const [isAuthReady, setIsAuthReady] = useState<boolean>(false);
-  const [screenMode, setScreenMode] = useState<ScreenMode>(() => {
-    try {
-      if (window.location.hash === '#admin' || readSessionValue(SCREEN_MODE_KEY) === 'admin') {
-        return 'admin';
-      }
-    } catch {
-      // ignore
-    }
-    return 'user';
-  });
-  const [adminLoginPortalOpen, setAdminLoginPortalOpen] = useState<boolean>(() => {
-    try {
-      return window.location.hash === '#admin';
-    } catch {
-      return false;
-    }
-  });
+  const [allPlanConfigs, setAllPlanConfigs] = useState<Record<PlanTier, PlanConfigDoc>>(DEFAULT_PLAN_CONFIGS);
   const [syncStatus, setSyncStatus] = useState<CloudSyncStatus>('local_only');
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
   const [cloudCounts, setCloudCounts] = useState<{ sm2: number; mistakes: number }>({ sm2: 0, mistakes: 0 });
   const [authError, setAuthError] = useState<string | null>(null);
-
-  const loginIntentRef = useRef<ScreenMode | null>(null);
+  const hydratedUidRef = useRef<string | null>(null);
 
   const performSync = useCallback(async (targetUser: User | null) => {
     if (!targetUser || !targetUser.emailVerified) {
@@ -117,11 +99,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setSyncStatus('syncing');
     try {
+      if (hydratedUidRef.current !== targetUser.uid) {
+        await hydrateLocalStateFromCloud(targetUser);
+        hydratedUidRef.current = targetUser.uid;
+      }
       const result = await runFullCloudSync(targetUser);
       const summary = await fetchUserCloudSummary(targetUser);
       const latestProfile = summary.profile || result.profile || null;
       if (latestProfile) {
-        setUserProfile(latestProfile);
+        if (isBootstrappedAdminUser(targetUser)) {
+          setUserProfile({
+            ...latestProfile,
+            role: 'admin',
+            planTier: 'elite',
+            planActive: true,
+            planPermissions: { ...latestProfile.planPermissions, planAdmin: true }
+          });
+        } else {
+          setUserProfile(latestProfile);
+        }
       }
       setCloudCounts({ sm2: summary.cloudSm2Count, mistakes: summary.cloudMistakeCount });
       setLastSyncedAt(Date.now());
@@ -134,68 +130,83 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+  const applyAuthenticatedUser = useCallback(
+    async (firebaseUser: User | null, isStillActive: () => boolean) => {
       if (!firebaseUser) {
+        hydratedUidRef.current = null;
+        setActiveStorageUserUid(null);
+        SpacedRepetitionManager.getInstance().reloadForActiveUser();
+        LearnerService.getInstance().reloadForActiveUser();
+        AutoLearningEngine.getInstance().reloadForActiveUser();
+
         setUser(null);
         setUserProfile(null);
-        setScreenMode('user');
+        setAllPlanConfigs(DEFAULT_PLAN_CONFIGS);
         setSyncStatus('local_only');
         setCloudCounts({ sm2: 0, mistakes: 0 });
         setIsAuthReady(true);
         return;
       }
 
-      const hashIsAdmin = typeof window !== 'undefined' && window.location.hash === '#admin';
-      const storedIntent = readSessionValue(LOGIN_INTENT_KEY);
-      const storedScreen = readSessionValue(SCREEN_MODE_KEY);
-      const explicitAdminAttempt =
-        loginIntentRef.current === 'admin' || storedIntent === 'admin' || hashIsAdmin;
+      // 1. Isolate browser storage to this UID synchronously before workspace renders
+      setActiveStorageUserUid(firebaseUser.uid);
+      SpacedRepetitionManager.getInstance().reloadForActiveUser();
+      LearnerService.getInstance().reloadForActiveUser();
+      AutoLearningEngine.getInstance().reloadForActiveUser();
 
-      // Immediately pre-set admin view if bootstrapped admin opened admin portal, preventing user-screen flash
-      if (explicitAdminAttempt && isBootstrappedAdminUser(firebaseUser)) {
-        setScreenMode('admin');
-        setAdminLoginPortalOpen(false);
-        writeSessionValue(SCREEN_MODE_KEY, 'admin');
-      }
-
+      // 2. Immediate state transition so user & bootstrapped owner admin enter instantly
       setUser(firebaseUser);
-      const profile = await performSync(firebaseUser);
-      const isAllowedAdmin = isProfileAuthorizedAdmin(firebaseUser, profile);
-
-      if (explicitAdminAttempt) {
-        if (isAllowedAdmin) {
-          setScreenMode('admin');
-          setAdminLoginPortalOpen(false);
-          setAuthError(null);
-          writeSessionValue(SCREEN_MODE_KEY, 'admin');
-        } else {
-          await signOutUser();
-          setUser(null);
-          setUserProfile(null);
-          setScreenMode('user');
-          setAdminLoginPortalOpen(true);
-          writeSessionValue(SCREEN_MODE_KEY, null);
-          writeSessionValue(LOGIN_INTENT_KEY, null);
-          setAuthError('Acceso Denegado: esta cuenta no tiene la opción de Administrador activa en su plan.');
-        }
-        loginIntentRef.current = null;
-        writeSessionValue(LOGIN_INTENT_KEY, null);
-      } else if (storedScreen === 'admin' && isAllowedAdmin) {
-        setScreenMode('admin');
-        setAdminLoginPortalOpen(false);
+      if (isBootstrappedAdminUser(firebaseUser)) {
+        setUserProfile(prev => (prev && prev.uid === firebaseUser.uid ? prev : buildBootstrappedAdminProfile(firebaseUser)));
+        setIsAuthReady(true);
       } else {
-        setScreenMode('user');
-        writeSessionValue(SCREEN_MODE_KEY, 'user');
+        try {
+          const snap = await getDoc(doc(db, 'users', firebaseUser.uid));
+          if (!isStillActive()) return;
+          if (snap.exists()) {
+            setUserProfile(mapSnapshotToUserProfile(snap.id, snap.data() as Record<string, unknown>));
+          }
+        } catch {
+          // Non-fatal: performSync will hydrate/sync below
+        }
+        if (!isStillActive()) return;
+        setIsAuthReady(true);
       }
 
+      // 3. Hydrate cloud progress into UID-scoped localStorage, then propagate latest profile metadata
+      await performSync(firebaseUser);
+      if (!isStillActive()) return;
       setIsAuthReady(true);
+    },
+    [performSync]
+  );
+
+  useEffect(() => {
+    let active = true;
+    let resolvedOnce = false;
+    void authRedirectPromise.catch(() => null);
+
+    const failSafeTimer = setTimeout(() => {
+      if (!active || resolvedOnce) return;
+      resolvedOnce = true;
+      void applyAuthenticatedUser(auth.currentUser, () => active);
+    }, 3000);
+
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      if (!active) return;
+      resolvedOnce = true;
+      clearTimeout(failSafeTimer);
+      void applyAuthenticatedUser(firebaseUser, () => active);
     });
 
-    return () => unsubscribe();
-  }, [performSync]);
+    return () => {
+      active = false;
+      clearTimeout(failSafeTimer);
+      unsubscribe();
+    };
+  }, [applyAuthenticatedUser]);
 
-  // Real-time listener on user profile (locks User screen instantly if plan deactivated by Admin)
+  // Real-time listener on user profile (locks User screen instantly if plan deactivated or changed by Admin Console)
   useEffect(() => {
     if (!isAuthReady || !user || !user.emailVerified) return;
 
@@ -219,6 +230,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => unsubscribe();
   }, [isAuthReady, user]);
 
+  // Real-time listener on Admin-managed /planConfigs catalog (updates sections & benefits live across repos!)
+  useEffect(() => {
+    if (!isAuthReady || !user || !user.emailVerified) return;
+
+    const q = query(collection(db, 'planConfigs'), limit(10));
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        const next: Record<PlanTier, PlanConfigDoc> = { ...DEFAULT_PLAN_CONFIGS };
+        for (const d of snap.docs) {
+          if (d.id === 'free' || d.id === 'pro' || d.id === 'elite') {
+            next[d.id] = mergePlanConfig(d.id, d.data() as Record<string, unknown>);
+          }
+        }
+        setAllPlanConfigs(next);
+      },
+      () => {
+        // Fallback smoothly to DEFAULT_PLAN_CONFIGS if catalog hasn't been initialized yet
+      }
+    );
+
+    return () => unsubscribe();
+  }, [isAuthReady, user]);
+
   // Auto-sync whenever SM-2, Learner mistakes, or local storage updates
   useEffect(() => {
     if (!user) return;
@@ -233,14 +268,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     window.addEventListener(SM2_UPDATE_EVENT, scheduleSync);
     window.addEventListener(LEARNER_UPDATE_EVENT, scheduleSync);
+    window.addEventListener('lab-pro-sync-needed', scheduleSync);
     window.addEventListener('storage', scheduleSync);
     return () => {
       if (timer) clearTimeout(timer);
       window.removeEventListener(SM2_UPDATE_EVENT, scheduleSync);
       window.removeEventListener(LEARNER_UPDATE_EVENT, scheduleSync);
+      window.removeEventListener('lab-pro-sync-needed', scheduleSync);
       window.removeEventListener('storage', scheduleSync);
     };
   }, [user, performSync]);
+
+  const isOwnerAdmin = useMemo(() => {
+    return isBootstrappedAdminUser(user);
+  }, [user]);
 
   const isAdmin = useMemo(() => {
     if (!user || !user.emailVerified) return false;
@@ -249,15 +290,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const isPlanActive = useMemo(() => {
     if (!user) return false;
-    if (screenMode === 'admin' && isAdmin) return true;
+    if (isAdmin) return true;
     if (!userProfile) return true;
     return userProfile.planActive;
-  }, [user, screenMode, isAdmin, userProfile]);
+  }, [user, isAdmin, userProfile]);
 
   const planTier: PlanTier = useMemo(() => {
     if (userProfile?.planTier) return userProfile.planTier;
     return isAdmin ? 'elite' : 'free';
   }, [userProfile, isAdmin]);
+
+  const activePlanConfig = useMemo(() => {
+    return allPlanConfigs[planTier] || DEFAULT_PLAN_CONFIGS[planTier];
+  }, [allPlanConfigs, planTier]);
 
   const planPermissions: PlanPermissions = useMemo(() => {
     if (userProfile?.planPermissions) {
@@ -266,76 +311,82 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         planAdmin: isAdmin
       };
     }
-    return getDefaultPlanPermissions(planTier, isAdmin);
-  }, [userProfile, planTier, isAdmin]);
+    return {
+      ...activePlanConfig.defaultPermissions,
+      ...getDefaultPlanPermissions(planTier, isAdmin),
+      planAdmin: isAdmin
+    };
+  }, [userProfile, activePlanConfig, planTier, isAdmin]);
 
-  const switchScreenMode = useCallback(
-    (nextMode: ScreenMode) => {
-      if (nextMode === 'admin' && !isAdmin) return;
-      setScreenMode(nextMode);
-      writeSessionValue(SCREEN_MODE_KEY, nextMode);
-      try {
-        if (nextMode === 'admin') {
-          window.history.replaceState(null, '', '#admin');
-        } else if (window.location.hash === '#admin') {
-          window.history.replaceState(null, '', window.location.pathname);
-        }
-      } catch {
-        // ignore
-      }
+  const canAccessSection = useCallback(
+    (section: LabSectionId): boolean => {
+      if (isAdmin) return true;
+      return Boolean(activePlanConfig.visibleSections[section]);
     },
-    [isAdmin]
+    [isAdmin, activePlanConfig]
   );
+
+  const verifyAdminSession = useCallback(async (): Promise<boolean> => {
+    const currentUser = auth.currentUser || user;
+    if (!currentUser || !currentUser.emailVerified) {
+      return false;
+    }
+
+    if (isBootstrappedAdminUser(currentUser)) {
+      setUser(currentUser);
+      setUserProfile(prev => (prev && prev.uid === currentUser.uid ? prev : buildBootstrappedAdminProfile(currentUser)));
+      return true;
+    }
+
+    try {
+      const snap = await getDoc(doc(db, 'users', currentUser.uid));
+      if (!snap.exists()) return false;
+      const freshProfile = mapSnapshotToUserProfile(snap.id, snap.data() as Record<string, unknown>);
+      setUserProfile(freshProfile);
+      return isProfileAuthorizedAdmin(currentUser, freshProfile);
+    } catch {
+      return isProfileAuthorizedAdmin(currentUser, userProfile);
+    }
+  }, [user, userProfile]);
+
+  const openAdminConsole = useCallback(() => {
+    window.location.assign(getAdminConsoleUrl());
+  }, []);
 
   const loginAsUser = async () => {
     setAuthError(null);
-    loginIntentRef.current = 'user';
-    writeSessionValue(LOGIN_INTENT_KEY, 'user');
-    writeSessionValue(SCREEN_MODE_KEY, 'user');
-    try {
-      await signInWithGoogle();
-    } catch (err) {
-      setAuthError(err instanceof Error ? err.message : 'No se pudo iniciar sesión con Google.');
-    }
-  };
-
-  const loginAsAdmin = async () => {
-    setAuthError(null);
-    loginIntentRef.current = 'admin';
-    writeSessionValue(LOGIN_INTENT_KEY, 'admin');
-    writeSessionValue(SCREEN_MODE_KEY, 'admin');
     try {
       const cred = await signInWithGoogle();
       if (cred.user && isBootstrappedAdminUser(cred.user)) {
-        setScreenMode('admin');
-        setAdminLoginPortalOpen(false);
+        setUser(cred.user);
+        setUserProfile(prev => (prev && prev.uid === cred.user.uid ? prev : buildBootstrappedAdminProfile(cred.user)));
+        setIsAuthReady(true);
       }
     } catch (err) {
-      loginIntentRef.current = null;
-      writeSessionValue(LOGIN_INTENT_KEY, null);
-      writeSessionValue(SCREEN_MODE_KEY, null);
-      setAuthError(err instanceof Error ? err.message : 'No se pudo iniciar sesión en el Módulo Administrador.');
+      setAuthError(mapAuthErrorToSpanish(err));
+    }
+  };
+
+  const loginAsUserRedirect = async () => {
+    setAuthError(null);
+    try {
+      await signInWithGoogleRedirect();
+    } catch (err) {
+      setAuthError(mapAuthErrorToSpanish(err));
     }
   };
 
   const returnToMainEntry = async () => {
     setAuthError(null);
-    loginIntentRef.current = null;
-    writeSessionValue(LOGIN_INTENT_KEY, null);
-    writeSessionValue(SCREEN_MODE_KEY, null);
-    setAdminLoginPortalOpen(false);
-    try {
-      if (window.location.hash === '#admin') {
-        window.history.replaceState(null, '', window.location.pathname);
-      }
-    } catch {
-      // ignore
-    }
     try {
       await signOutUser();
+      hydratedUidRef.current = null;
+      setActiveStorageUserUid(null);
+      SpacedRepetitionManager.getInstance().reloadForActiveUser();
+      LearnerService.getInstance().reloadForActiveUser();
+      AutoLearningEngine.getInstance().reloadForActiveUser();
       setUser(null);
       setUserProfile(null);
-      setScreenMode('user');
       setSyncStatus('local_only');
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : 'Error al volver a la entrada principal.');
@@ -367,19 +418,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         userProfile,
         isAuthReady,
         isAdmin,
+        isOwnerAdmin,
         isPlanActive,
         planTier,
         planPermissions,
-        screenMode,
-        switchScreenMode,
-        adminLoginPortalOpen,
-        setAdminLoginPortalOpen,
+        activePlanConfig,
+        allPlanConfigs,
+        canAccessSection,
+        verifyAdminSession,
+        openAdminConsole,
         syncStatus,
         lastSyncedAt,
         cloudCounts,
         authError,
         loginAsUser,
-        loginAsAdmin,
+        loginAsUserRedirect,
         returnToMainEntry,
         syncNow,
         refreshProfile

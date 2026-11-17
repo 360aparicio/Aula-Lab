@@ -60,6 +60,7 @@ export interface TreeConfig {
   allowAllIn: boolean;
   maxRaises: number; // per street
   street: 'flop' | 'turn' | 'river';
+  multiStreetMode?: boolean; // when true on flop/turn, chains CALL / IP CHECK into next street(s)
 }
 
 export const DEFAULT_TREE_CONFIG: TreeConfig = {
@@ -69,14 +70,23 @@ export const DEFAULT_TREE_CONFIG: TreeConfig = {
   raiseSizes: [2.5],
   allowAllIn: true,
   maxRaises: 2,
-  street: 'river'
+  street: 'river',
+  multiStreetMode: false
 };
+
+function getNextStreet(s: 'flop' | 'turn' | 'river'): 'turn' | 'river' | null {
+  if (s === 'flop') return 'turn';
+  if (s === 'turn') return 'river';
+  return null;
+}
 
 /**
  * Builds an explicit game tree for Heads-Up Postflop play according to TreeConfig.
  */
 export function buildGameTree(config: TreeConfig = DEFAULT_TREE_CONFIG): ActionNode {
   let nodeCount = 0;
+  const MAX_MULTI_STREET_NODES = 260;
+  const enableMultiStreet = Boolean(config.multiStreetMode && config.street !== 'river');
 
   function buildNode(
     id: string,
@@ -85,11 +95,54 @@ export function buildGameTree(config: TreeConfig = DEFAULT_TREE_CONFIG): ActionN
     bets: Record<PlayerRole, number>,
     stacks: Record<PlayerRole, number>,
     numRaises: number,
-    history: string[]
+    history: string[],
+    nodeStreet: 'flop' | 'turn' | 'river'
   ): GameNode {
     nodeCount++;
     const opponent = getOtherPlayer(player);
     const facingBet = bets[opponent] - bets[player];
+    const isDownstreamStreet = nodeStreet !== config.street;
+    const effectiveBetSizes = isDownstreamStreet
+      ? [config.betSizes[nodeStreet === 'river' ? config.betSizes.length - 1 : 0] ?? 0.66]
+      : config.betSizes;
+    const effectiveMaxRaises = isDownstreamStreet ? Math.min(2, config.maxRaises) : config.maxRaises;
+
+    const makeRoundEndNode = (
+      endPrefixId: string,
+      endPot: number,
+      endBets: Record<PlayerRole, number>,
+      endStacks: Record<PlayerRole, number>,
+      endHistory: string[]
+    ): GameNode => {
+      const nextSt = enableMultiStreet ? getNextStreet(nodeStreet) : null;
+      if (
+        nextSt &&
+        endStacks.OOP > 0 &&
+        endStacks.IP > 0 &&
+        nodeCount < MAX_MULTI_STREET_NODES
+      ) {
+        return buildNode(
+          `${endPrefixId}_${nextSt}`,
+          'OOP',
+          endPot,
+          { ...endBets },
+          { ...endStacks },
+          0,
+          [...endHistory, `calle_${nextSt}`],
+          nextSt
+        );
+      }
+
+      return {
+        id: `${endPrefixId}_showdown`,
+        nodeType: 'showdown',
+        pot: endPot,
+        playerBets: { ...endBets },
+        stacks: { ...endStacks },
+        street: nodeStreet,
+        history: endHistory
+      };
+    };
 
     // Case 1: Facing NO bet (facingBet === 0) -> legal actions: CHECK, BET (various sizes), ALL-IN
     if (facingBet === 0) {
@@ -105,17 +158,15 @@ export function buildGameTree(config: TreeConfig = DEFAULT_TREE_CONFIG): ActionN
         label: 'Check'
       });
 
-      // If player is IP and checks, betting round ends -> Showdown!
+      // If player is IP and checks, betting round ends -> next street (if multiStreetMode) or Showdown!
       if (player === 'IP') {
-        children['CHECK'] = {
-          id: `${id}_check_showdown`,
-          nodeType: 'showdown',
+        children['CHECK'] = makeRoundEndNode(
+          `${id}_check`,
           pot,
-          playerBets: { ...bets },
-          stacks: { ...stacks },
-          street: config.street,
-          history: [...history, 'check']
-        };
+          bets,
+          stacks,
+          [...history, 'check']
+        );
       } else {
         // OOP checks -> pass to IP
         children['CHECK'] = buildNode(
@@ -125,14 +176,15 @@ export function buildGameTree(config: TreeConfig = DEFAULT_TREE_CONFIG): ActionN
           { ...bets },
           { ...stacks },
           0,
-          [...history, 'check']
+          [...history, 'check'],
+          nodeStreet
         );
       }
 
       // Bets if stacks allow
       const availableStack = stacks[player];
-      if (availableStack > 0 && numRaises < config.maxRaises) {
-        for (const frac of config.betSizes) {
+      if (availableStack > 0 && numRaises < effectiveMaxRaises) {
+        for (const frac of effectiveBetSizes) {
           const rawBet = Math.round(pot * frac);
           if (rawBet > 0 && rawBet < availableStack) {
             const actionKey = `BET_${Math.round(frac * 100)}`;
@@ -154,7 +206,8 @@ export function buildGameTree(config: TreeConfig = DEFAULT_TREE_CONFIG): ActionN
               newBets,
               newStacks,
               numRaises + 1,
-              [...history, actionKey]
+              [...history, actionKey],
+              nodeStreet
             );
           }
         }
@@ -178,7 +231,8 @@ export function buildGameTree(config: TreeConfig = DEFAULT_TREE_CONFIG): ActionN
             newBets,
             newStacks,
             numRaises + 1,
-            [...history, 'allin']
+            [...history, 'allin'],
+            nodeStreet
           );
         }
       }
@@ -190,7 +244,7 @@ export function buildGameTree(config: TreeConfig = DEFAULT_TREE_CONFIG): ActionN
         pot,
         playerBets: { ...bets },
         stacks: { ...stacks },
-        street: config.street,
+        street: nodeStreet,
         history,
         actions,
         children
@@ -217,7 +271,7 @@ export function buildGameTree(config: TreeConfig = DEFAULT_TREE_CONFIG): ActionN
       pot,
       playerBets: { ...bets },
       stacks: { ...stacks },
-      street: config.street,
+      street: nodeStreet,
       history: [...history, 'fold']
     };
 
@@ -236,20 +290,18 @@ export function buildGameTree(config: TreeConfig = DEFAULT_TREE_CONFIG): ActionN
     const afterCallStacks = { ...stacks, [player]: stacks[player] - callAmount };
     const afterCallPot = pot + callAmount;
 
-    // After Call, action completes on this street -> Showdown
-    children['CALL'] = {
-      id: `${id}_call_showdown`,
-      nodeType: 'showdown',
-      pot: afterCallPot,
-      playerBets: afterCallBets,
-      stacks: afterCallStacks,
-      street: config.street,
-      history: [...history, 'call']
-    };
+    // After Call, betting round ends -> next street (if multiStreetMode & stacks remain) or Showdown
+    children['CALL'] = makeRoundEndNode(
+      `${id}_call`,
+      afterCallPot,
+      afterCallBets,
+      afterCallStacks,
+      [...history, 'call']
+    );
 
-    // Action: Raise (if not all-in, stack permits, and raises < maxRaises)
+    // Action: Raise (if not all-in, stack permits, and raises < effectiveMaxRaises)
     const remainingStack = stacks[player] - callAmount;
-    if (remainingStack > 0 && !isCallAllIn && numRaises < config.maxRaises) {
+    if (remainingStack > 0 && !isCallAllIn && numRaises < effectiveMaxRaises) {
       for (const mul of config.raiseSizes) {
         const raiseAdded = Math.round(facingBet * mul);
         const totalAdded = callAmount + raiseAdded;
@@ -272,7 +324,8 @@ export function buildGameTree(config: TreeConfig = DEFAULT_TREE_CONFIG): ActionN
             newBets,
             newStacks,
             numRaises + 1,
-            [...history, actionKey]
+            [...history, actionKey],
+            nodeStreet
           );
         }
       }
@@ -296,7 +349,8 @@ export function buildGameTree(config: TreeConfig = DEFAULT_TREE_CONFIG): ActionN
           newBets,
           newStacks,
           numRaises + 1,
-          [...history, 'allin']
+          [...history, 'allin'],
+          nodeStreet
         );
       }
     }
@@ -308,7 +362,7 @@ export function buildGameTree(config: TreeConfig = DEFAULT_TREE_CONFIG): ActionN
       pot,
       playerBets: { ...bets },
       stacks: { ...stacks },
-      street: config.street,
+      street: nodeStreet,
       history,
       actions,
       children
@@ -322,7 +376,8 @@ export function buildGameTree(config: TreeConfig = DEFAULT_TREE_CONFIG): ActionN
     { OOP: 0, IP: 0 },
     { OOP: config.effectiveStack, IP: config.effectiveStack },
     0,
-    []
+    [],
+    config.street
   );
 
   return root as ActionNode;

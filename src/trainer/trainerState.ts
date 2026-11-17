@@ -11,6 +11,7 @@ import { Action, ActionNode, GameNode, PlayerRole } from '../engine/gameTree';
 import { ConcreteHandWithWeight } from '../engine/range';
 import { NodeStrategyResult, SolveResult } from '../engine/dcfr';
 import { compareHands, evaluateCards } from '../engine/evaluator';
+import { readScopedItem, removeScopedItem, writeScopedItem } from '../lib/userStorage';
 
 export type ActionGrade = 'optimal' | 'acceptable' | 'inaccuracy' | 'mistake' | 'blunder';
 
@@ -83,12 +84,12 @@ export function getEloTier(elo: number): EloTier {
   return ELO_TIERS.find(t => elo >= t.minElo) || ELO_TIERS[ELO_TIERS.length - 1];
 }
 
-const STATS_STORAGE_KEY = 'gto_studio_trainer_stats_v2';
+export const STATS_STORAGE_KEY = 'gto_studio_trainer_stats_v2';
 const ATTEMPTS_STORAGE_KEY = 'gto_studio_trainer_attempts_v2';
 
 export function loadTrainerStats(): TrainerUserStats {
   try {
-    const raw = localStorage.getItem(STATS_STORAGE_KEY);
+    const raw = readScopedItem(STATS_STORAGE_KEY);
     if (raw) {
       return JSON.parse(raw);
     }
@@ -111,7 +112,7 @@ export function loadTrainerStats(): TrainerUserStats {
 
 export function saveTrainerStats(stats: TrainerUserStats) {
   try {
-    localStorage.setItem(STATS_STORAGE_KEY, JSON.stringify(stats));
+    writeScopedItem(STATS_STORAGE_KEY, JSON.stringify(stats));
   } catch (e) {
     // fallback
   }
@@ -119,7 +120,7 @@ export function saveTrainerStats(stats: TrainerUserStats) {
 
 export function loadTrainingAttempts(): TrainingAttempt[] {
   try {
-    const raw = localStorage.getItem(ATTEMPTS_STORAGE_KEY);
+    const raw = readScopedItem(ATTEMPTS_STORAGE_KEY);
     if (raw) {
       return JSON.parse(raw);
     }
@@ -134,7 +135,7 @@ export function saveTrainingAttempt(attempt: TrainingAttempt) {
     const list = loadTrainingAttempts();
     list.unshift(attempt);
     if (list.length > 200) list.pop();
-    localStorage.setItem(ATTEMPTS_STORAGE_KEY, JSON.stringify(list));
+    writeScopedItem(ATTEMPTS_STORAGE_KEY, JSON.stringify(list));
   } catch (e) {
     // fallback
   }
@@ -142,30 +143,42 @@ export function saveTrainingAttempt(attempt: TrainingAttempt) {
 
 export function clearTrainingAttempts() {
   try {
-    localStorage.removeItem(ATTEMPTS_STORAGE_KEY);
+    removeScopedItem(ATTEMPTS_STORAGE_KEY);
   } catch (e) {
     // fallback
   }
 }
 
 /**
- * Deal a random hero hand from active unblocked combos
+ * Deal a random hero hand from active unblocked combos, excluding recently dealt combo keys when possible.
  */
 export function dealRandomHeroHand(
-  combos: ConcreteHandWithWeight[]
+  combos: ConcreteHandWithWeight[],
+  excludeComboKeys?: Set<string> | string[]
 ): ConcreteHandWithWeight | null {
   if (combos.length === 0) return null;
 
+  let pool = combos;
+  if (excludeComboKeys) {
+    const excludeSet = Array.isArray(excludeComboKeys) ? new Set(excludeComboKeys) : excludeComboKeys;
+    if (excludeSet.size > 0) {
+      const fresh = combos.filter(c => !excludeSet.has(c.combo.key));
+      if (fresh.length > 0) {
+        pool = fresh;
+      }
+    }
+  }
+
   let totalWeight = 0;
-  for (const c of combos) totalWeight += c.weight;
-  if (totalWeight <= 0) return combos[0];
+  for (const c of pool) totalWeight += c.weight;
+  if (totalWeight <= 0) return pool[0];
 
   let r = Math.random() * totalWeight;
-  for (const c of combos) {
+  for (const c of pool) {
     if (r < c.weight) return c;
     r -= c.weight;
   }
-  return combos[combos.length - 1];
+  return pool[pool.length - 1];
 }
 
 /**
@@ -196,7 +209,8 @@ export function evaluateUserAction(
   chosenActionType: string,
   heroCombo: ConcreteHandWithWeight,
   strategyResult: NodeStrategyResult,
-  potSize = 100
+  potSize = 100,
+  bbUnit = 2
 ): TrainingFeedback {
   const comboKey = heroCombo.combo.key;
   const canonicalName = heroCombo.combo.canonicalName;
@@ -241,8 +255,8 @@ export function evaluateUserAction(
     }
   }
 
-  // Standard 100 chips = 50BB (2 chips per BB)
-  const evLossBB = Math.round((evLossChips / 2) * 100) / 100;
+  const safeBbUnit = bbUnit > 0 ? bbUnit : 2;
+  const evLossBB = Math.round((evLossChips / safeBbUnit) * 100) / 100;
 
   // EV Loss as percentage of pot (e.g. 7.2% of pot)
   const evLossPercentOfPot = potSize > 0 ? Math.round(((evLossChips / potSize) * 100) * 10) / 10 : 0;

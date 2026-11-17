@@ -6,6 +6,7 @@
  */
 
 import { PREBUILT_SCENARIOS, PrebuiltScenario } from '../trainer/prebuiltScenarios';
+import { readScopedItem, writeScopedItem } from '../lib/userStorage';
 
 const STORAGE_KEY = 'gto_studio_scenarios_v1';
 
@@ -24,7 +25,7 @@ export function loadAllScenarios(): SavedScenarioRecord[] {
   }));
 
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = readScopedItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
@@ -34,7 +35,7 @@ export function loadAllScenarios(): SavedScenarioRecord[] {
       }
     }
   } catch (e) {
-    console.error('Failed to parse saved scenarios from localStorage', e);
+    console.error('Failed to parse saved scenarios from storage', e);
   }
 
   saveAllScenarios(freshPrebuilts);
@@ -43,9 +44,9 @@ export function loadAllScenarios(): SavedScenarioRecord[] {
 
 export function saveAllScenarios(scenarios: SavedScenarioRecord[]) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(scenarios));
+    writeScopedItem(STORAGE_KEY, JSON.stringify(scenarios));
   } catch (e) {
-    console.error('Failed to save scenarios to localStorage', e);
+    console.error('Failed to save scenarios to storage', e);
   }
 }
 

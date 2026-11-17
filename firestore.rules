@@ -368,5 +368,204 @@ service cloud.firestore {
         && incoming().createdAt == request.time;
       allow update, delete: if false;
     }
+
+    function isValidVisibleSections(sec) {
+      return sec is map
+        && sec.keys().hasAll([
+          'wizard', 'solver', 'trainer', 'cheatsheet', 'academy',
+          'solver_meta', 'ranges', 'scenarios', 'benchmarks'
+        ])
+        && sec.keys().hasOnly([
+          'wizard', 'solver', 'trainer', 'cheatsheet', 'academy',
+          'solver_meta', 'ranges', 'scenarios', 'benchmarks'
+        ])
+        && sec.wizard is bool
+        && sec.solver is bool
+        && sec.trainer is bool
+        && sec.cheatsheet is bool
+        && sec.academy is bool
+        && sec.solver_meta is bool
+        && sec.ranges is bool
+        && sec.scenarios is bool
+        && sec.benchmarks is bool;
+    }
+
+    function isValidPlanConfig(data, tier) {
+      return data.keys().hasAll([
+        'planTier', 'displayName', 'tagline', 'priceLabel',
+        'maxDailyEvaluations', 'hideLockedSections', 'visibleSections',
+        'defaultPermissions', 'benefits', 'updatedByUid', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'planTier', 'displayName', 'tagline', 'priceLabel',
+        'maxDailyEvaluations', 'hideLockedSections', 'visibleSections',
+        'defaultPermissions', 'benefits', 'updatedByUid', 'updatedAt'
+      ])
+      && tier in ['free', 'pro', 'elite']
+      && data.planTier == tier
+      && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 48
+      && data.tagline is string && data.tagline.size() <= 160
+      && data.priceLabel is string && data.priceLabel.size() >= 1 && data.priceLabel.size() <= 32
+      && data.maxDailyEvaluations is number && data.maxDailyEvaluations >= 0 && data.maxDailyEvaluations <= 1000
+      && data.hideLockedSections is bool
+      && isValidVisibleSections(data.visibleSections)
+      && isValidPlanPermissions(data.defaultPermissions)
+      && data.benefits is list && data.benefits.size() <= 15
+      && (data.benefits.size() == 0 || (data.benefits[0] is string && data.benefits[0].size() <= 140))
+      && data.updatedByUid is string && data.updatedByUid.size() >= 6 && data.updatedByUid.size() <= 128
+      && data.updatedAt is timestamp;
+    }
+
+    // Shared Plan Catalog (Admin writes, verified Educational Lab users read)
+    match /planConfigs/{planTier} {
+      allow get: if isValidId(planTier) && planTier in ['free', 'pro', 'elite'] && isVerifiedUser();
+      allow list: if isVerifiedUser() && existing().planTier in ['free', 'pro', 'elite'];
+      allow create, update: if isValidId(planTier)
+        && isAdmin()
+        && isValidPlanConfig(incoming(), planTier)
+        && incoming().updatedByUid == request.auth.uid
+        && incoming().updatedAt == request.time;
+      allow delete: if isValidId(planTier) && isAdmin();
+    }
+
+    // Validation Blueprint: BillingTransaction
+    function isValidBillingTransaction(data) {
+      return data.keys().hasAll([
+        'userUid', 'userEmail', 'userName', 'planTier', 'amountUsd', 'currency',
+        'paymentMethod', 'status', 'billingPeriod', 'referenceCode', 'notes',
+        'recordedByUid', 'createdAt', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'userUid', 'userEmail', 'userName', 'planTier', 'amountUsd', 'currency',
+        'paymentMethod', 'status', 'billingPeriod', 'referenceCode', 'notes',
+        'recordedByUid', 'createdAt', 'updatedAt'
+      ])
+      && data.userUid is string && data.userUid.size() >= 4 && data.userUid.size() <= 128
+      && data.userEmail is string && data.userEmail.size() >= 3 && data.userEmail.size() <= 160
+      && data.userName is string && data.userName.size() >= 1 && data.userName.size() <= 80
+      && data.planTier in ['free', 'pro', 'elite']
+      && data.amountUsd is number && data.amountUsd >= 0 && data.amountUsd <= 100000
+      && data.currency == 'USD'
+      && data.paymentMethod in ['Stripe', 'Transferencia', 'PayPal', 'Efectivo', 'Cortesía']
+      && data.status in ['paid', 'pending', 'refunded']
+      && data.billingPeriod is string && data.billingPeriod.size() >= 7 && data.billingPeriod.size() <= 16
+      && data.referenceCode is string && data.referenceCode.size() <= 64
+      && data.notes is string && data.notes.size() <= 240
+      && data.recordedByUid is string && data.recordedByUid.size() >= 6 && data.recordedByUid.size() <= 128
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    match /billingTransactions/{txId} {
+      allow get: if isValidId(txId) && (isAdmin() || (isVerifiedUser() && existing().userUid == request.auth.uid));
+      allow list: if isAdmin() || (isVerifiedUser() && existing().userUid == request.auth.uid);
+      allow create: if isValidId(txId)
+        && isAdmin()
+        && isValidBillingTransaction(incoming())
+        && incoming().recordedByUid == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(txId)
+        && isAdmin()
+        && isValidBillingTransaction(incoming())
+        && incoming().userUid == existing().userUid
+        && incoming().recordedByUid == existing().recordedByUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'notes', 'referenceCode', 'paymentMethod', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    // Validation Blueprint: PlatformAnnouncement
+    function isValidPlatformAnnouncement(data) {
+      return data.keys().hasAll([
+        'title', 'message', 'severity', 'targetPlan', 'active',
+        'createdByUid', 'createdAt', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'title', 'message', 'severity', 'targetPlan', 'active',
+        'createdByUid', 'createdAt', 'updatedAt'
+      ])
+      && data.title is string && data.title.size() >= 2 && data.title.size() <= 90
+      && data.message is string && data.message.size() >= 4 && data.message.size() <= 300
+      && data.severity in ['info', 'success', 'warning']
+      && data.targetPlan in ['all', 'free', 'pro', 'elite']
+      && data.active is bool
+      && data.createdByUid is string && data.createdByUid.size() >= 6 && data.createdByUid.size() <= 128
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    match /platformAnnouncements/{annId} {
+      allow get: if isValidId(annId) && (isAdmin() || (isVerifiedUser() && existing().active == true));
+      allow list: if isAdmin() || (isVerifiedUser() && existing().active == true);
+      allow create: if isValidId(annId)
+        && isAdmin()
+        && isValidPlatformAnnouncement(incoming())
+        && incoming().createdByUid == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(annId)
+        && isAdmin()
+        && isValidPlatformAnnouncement(incoming())
+        && incoming().createdByUid == existing().createdByUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time;
+      allow delete: if isValidId(annId) && isAdmin();
+    }
+
+    // Validation Blueprint: SupportTicket
+    function isValidSupportTicket(data) {
+      return data.keys().hasAll([
+        'userUid', 'userEmail', 'userName', 'subject', 'description',
+        'category', 'priority', 'status', 'adminNotes', 'createdByUid',
+        'createdAt', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'userUid', 'userEmail', 'userName', 'subject', 'description',
+        'category', 'priority', 'status', 'adminNotes', 'createdByUid',
+        'createdAt', 'updatedAt'
+      ])
+      && data.userUid is string && data.userUid.size() >= 4 && data.userUid.size() <= 128
+      && data.userEmail is string && data.userEmail.size() >= 3 && data.userEmail.size() <= 160
+      && data.userName is string && data.userName.size() >= 1 && data.userName.size() <= 80
+      && data.subject is string && data.subject.size() >= 2 && data.subject.size() <= 120
+      && data.description is string && data.description.size() >= 4 && data.description.size() <= 600
+      && data.category in ['Acceso', 'Pagos', 'Duda Técnica', 'Otro']
+      && data.priority in ['low', 'medium', 'high']
+      && data.status in ['open', 'in_progress', 'resolved']
+      && data.adminNotes is string && data.adminNotes.size() <= 400
+      && data.createdByUid is string && data.createdByUid.size() >= 6 && data.createdByUid.size() <= 128
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    match /supportTickets/{ticketId} {
+      allow get: if isValidId(ticketId) && (isAdmin() || (isVerifiedUser() && existing().userUid == request.auth.uid));
+      allow list: if isAdmin() || (isVerifiedUser() && existing().userUid == request.auth.uid);
+      allow create: if isValidId(ticketId)
+        && isValidSupportTicket(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && (
+          (isAdmin() && incoming().createdByUid == request.auth.uid)
+          || (
+            isVerifiedUser()
+            && incoming().userUid == request.auth.uid
+            && incoming().createdByUid == request.auth.uid
+            && incoming().status == 'open'
+            && incoming().adminNotes == ''
+          )
+        );
+      allow update: if isValidId(ticketId)
+        && isAdmin()
+        && isValidSupportTicket(incoming())
+        && incoming().userUid == existing().userUid
+        && incoming().createdByUid == existing().createdByUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'priority', 'adminNotes', 'updatedAt']);
+      allow delete: if isValidId(ticketId) && isAdmin();
+    }
   }
 }

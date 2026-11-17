@@ -325,7 +325,7 @@ export const DecisionTreeViewer: React.FC<DecisionTreeViewerProps> = ({
           <div className="flex items-center gap-1.5">
             {/* Visual Convergence Alert Badge */}
             {convInfo.status === 'critical' ? (
-              <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-900/70 border border-rose-500/80 text-rose-200 text-[10px] font-mono font-bold animate-pulse">
+              <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-900/70 border border-rose-500/80 text-rose-200 text-[10px] font-mono font-bold">
                 <AlertTriangle className="w-3 h-3 text-rose-400" />
                 <span>🚨 Alerta Crítica (+{convInfo.localExploitabilityBB} bb)</span>
               </span>
@@ -455,7 +455,7 @@ export const DecisionTreeViewer: React.FC<DecisionTreeViewerProps> = ({
               <div className="flex items-center justify-between pb-1.5 border-b border-neutral-800/80">
                 <div className="flex items-center gap-2 font-bold">
                   {convInfo.isCritical ? (
-                    <AlertTriangle className="w-4 h-4 text-rose-400 animate-pulse" />
+                    <AlertTriangle className="w-4 h-4 text-rose-400" />
                   ) : convInfo.isWarning ? (
                     <AlertOctagon className="w-4 h-4 text-amber-400" />
                   ) : (
@@ -662,7 +662,7 @@ export const DecisionTreeViewer: React.FC<DecisionTreeViewerProps> = ({
                     </span>
                     <div className="flex items-center gap-1.5">
                       {childConv.isCritical && (
-                        <span className="flex items-center gap-0.5 text-[10px] font-bold text-rose-400 bg-rose-950 px-1.5 py-0.2 rounded border border-rose-800 animate-pulse">
+                        <span className="flex items-center gap-0.5 text-[10px] font-bold text-rose-400 bg-rose-950 px-1.5 py-0.2 rounded border border-rose-800">
                           <AlertTriangle className="w-2.5 h-2.5" />
                           <span>+{childConv.localExploitabilityBB} bb</span>
                         </span>
@@ -778,7 +778,7 @@ export const DecisionTreeViewer: React.FC<DecisionTreeViewerProps> = ({
 
             {/* Alert badge directly in tree row */}
             {convInfo.isCritical && (
-              <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-rose-600 text-white animate-pulse">
+              <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-rose-600 text-white">
                 <AlertTriangle className="w-2.5 h-2.5" />
                 <span>🚨 +{convInfo.localExploitabilityBB} BB</span>
               </span>
@@ -881,7 +881,7 @@ export const DecisionTreeViewer: React.FC<DecisionTreeViewerProps> = ({
           <div className="flex items-center gap-2.5">
             {treeConvergenceStats.criticalCount > 0 ? (
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-950 border border-rose-500 text-rose-300 font-bold text-xs animate-pulse">
+                <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-950 border border-rose-500 text-rose-300 font-bold text-xs">
                   <AlertTriangle className="w-4 h-4 text-rose-400" />
                   <span>{treeConvergenceStats.criticalCount} Nodos con Alerta Crítica</span>
                 </span>

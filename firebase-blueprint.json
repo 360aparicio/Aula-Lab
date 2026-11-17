@@ -323,6 +323,262 @@
         }
       },
       "required": ["actorUid", "actorEmail", "targetUid", "targetLabel", "action", "detail", "createdAt"]
+    },
+    "PlanConfig": {
+      "title": "PlanConfig",
+      "description": "Admin-managed subscription tier configuration controlling visible Educational Lab sections, benefits copy, daily evaluation limits, and default permissions.",
+      "type": "object",
+      "properties": {
+        "planTier": {
+          "type": "string",
+          "enum": ["free", "pro", "elite"],
+          "maxLength": 16
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 48
+        },
+        "tagline": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "priceLabel": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "maxDailyEvaluations": {
+          "type": "number"
+        },
+        "hideLockedSections": {
+          "type": "boolean"
+        },
+        "visibleSections": {
+          "type": "object",
+          "description": "Map of Educational Lab tabs (wizard, solver, trainer, cheatsheet, academy, solver_meta, ranges, scenarios, benchmarks) enabled for this plan"
+        },
+        "defaultPermissions": {
+          "type": "object",
+          "description": "Default granular permissions (labPro, webBrain, unlimitedEval, pdfExport, planAdmin)"
+        },
+        "benefits": {
+          "type": "array",
+          "description": "List of user-facing benefit strings for this tier (max 15)"
+        },
+        "updatedByUid": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "planTier", "displayName", "tagline", "priceLabel",
+        "maxDailyEvaluations", "hideLockedSections", "visibleSections",
+        "defaultPermissions", "benefits", "updatedByUid", "updatedAt"
+      ]
+    },
+    "BillingTransaction": {
+      "title": "BillingTransaction",
+      "description": "Subscription payment, manual invoice, renewal, or refund ledger entry recorded in Admin Console.",
+      "type": "object",
+      "properties": {
+        "userUid": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userEmail": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "userName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "planTier": {
+          "type": "string",
+          "enum": ["free", "pro", "elite"],
+          "maxLength": 16
+        },
+        "amountUsd": {
+          "type": "number"
+        },
+        "currency": {
+          "type": "string",
+          "enum": ["USD"],
+          "maxLength": 8
+        },
+        "paymentMethod": {
+          "type": "string",
+          "enum": ["Stripe", "Transferencia", "PayPal", "Efectivo", "Cortesía"],
+          "maxLength": 32
+        },
+        "status": {
+          "type": "string",
+          "enum": ["paid", "pending", "refunded"],
+          "maxLength": 16
+        },
+        "billingPeriod": {
+          "type": "string",
+          "minLength": 7,
+          "maxLength": 16
+        },
+        "referenceCode": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 240
+        },
+        "recordedByUid": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "userUid", "userEmail", "userName", "planTier", "amountUsd", "currency",
+        "paymentMethod", "status", "billingPeriod", "referenceCode", "notes",
+        "recordedByUid", "createdAt", "updatedAt"
+      ]
+    },
+    "PlatformAnnouncement": {
+      "title": "PlatformAnnouncement",
+      "description": "Live platform-wide notice or banner published from Admin Console to students in Educational Lab.",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 90
+        },
+        "message": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 300
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["info", "success", "warning"],
+          "maxLength": 16
+        },
+        "targetPlan": {
+          "type": "string",
+          "enum": ["all", "free", "pro", "elite"],
+          "maxLength": 16
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "createdByUid": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "title", "message", "severity", "targetPlan", "active",
+        "createdByUid", "createdAt", "updatedAt"
+      ]
+    },
+    "SupportTicket": {
+      "title": "SupportTicket",
+      "description": "Student support request or internal admin account follow-up ticket.",
+      "type": "object",
+      "properties": {
+        "userUid": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userEmail": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "userName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "subject": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "description": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 600
+        },
+        "category": {
+          "type": "string",
+          "enum": ["Acceso", "Pagos", "Duda Técnica", "Otro"],
+          "maxLength": 32
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["low", "medium", "high"],
+          "maxLength": 16
+        },
+        "status": {
+          "type": "string",
+          "enum": ["open", "in_progress", "resolved"],
+          "maxLength": 16
+        },
+        "adminNotes": {
+          "type": "string",
+          "maxLength": 400
+        },
+        "createdByUid": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "userUid", "userEmail", "userName", "subject", "description",
+        "category", "priority", "status", "adminNotes", "createdByUid",
+        "createdAt", "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -333,6 +589,22 @@
     "/userInvites/{inviteId}": {
       "schema": { "$ref": "#/entities/UserInvite" },
       "description": "Admin-provisioned user provisioning records keyed deterministically from email for first-login claim."
+    },
+    "/planConfigs/{planTier}": {
+      "schema": { "$ref": "#/entities/PlanConfig" },
+      "description": "Admin-managed plan catalog configuring Educational Lab visible sections, benefits list, and default permissions for free/pro/elite."
+    },
+    "/billingTransactions/{txId}": {
+      "schema": { "$ref": "#/entities/BillingTransaction" },
+      "description": "Subscription revenue, payments, renewals, and refunds recorded by Admin Console."
+    },
+    "/platformAnnouncements/{annId}": {
+      "schema": { "$ref": "#/entities/PlatformAnnouncement" },
+      "description": "Live platform announcements targeted to students by plan tier."
+    },
+    "/supportTickets/{ticketId}": {
+      "schema": { "$ref": "#/entities/SupportTicket" },
+      "description": "Student support requests and internal administrative resolution notes."
     },
     "/users/{userId}/sm2Items/{itemId}": {
       "schema": { "$ref": "#/entities/SM2ItemRecord" },

@@ -11,6 +11,7 @@
 import { Card } from './cards';
 import { SpacedRepetitionManager } from './spacedRepetition';
 import { SolverMetaUpdater } from './solverMetaUpdater';
+import { readScopedItem, writeScopedItem } from '../lib/userStorage';
 
 export interface BoardTextureAnalysis {
   wetness: 'Seco (Dry)' | 'Coordinado (Wet)' | 'Monótono (Monotone)' | 'Emparejado (Paired)' | 'Preflop';
@@ -182,9 +183,32 @@ export class LearnerService {
     return LearnerService.instance;
   }
 
+  public reloadForActiveUser(): void {
+    this.mistakes = [];
+    this.totalRecordedDecisions = 0;
+    this.loadFromStorage();
+  }
+
+  public mergeMistakesFromCloud(cloudMistakes: LearnerMistakeRecord[]): void {
+    if (!Array.isArray(cloudMistakes) || cloudMistakes.length === 0) return;
+    const existingIds = new Set(this.mistakes.map(m => m.id));
+    let changed = false;
+    for (const cm of cloudMistakes) {
+      if (!existingIds.has(cm.id)) {
+        this.mistakes.push(cm);
+        changed = true;
+      }
+    }
+    if (changed) {
+      this.mistakes = this.mistakes.sort((a, b) => b.timestamp - a.timestamp).slice(0, 150);
+      this.totalRecordedDecisions = Math.max(this.totalRecordedDecisions, this.mistakes.length);
+      this.saveToStorage(false);
+    }
+  }
+
   private loadFromStorage(): void {
     try {
-      const raw = localStorage.getItem(LEARNER_STORAGE_KEY);
+      const raw = readScopedItem(LEARNER_STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
@@ -197,75 +221,18 @@ export class LearnerService {
       // fallback
     }
 
-    // Default Seed Mistakes for initial patterns
-    this.mistakes = [
-      {
-        id: 'seed-mistake-1',
-        timestamp: Date.now() - 3600000 * 3,
-        scenarioTitle: 'Bote 3-Bet BTN vs BB (A83r)',
-        heroCombo: 'Ad5d',
-        boardCards: ['Ah', '8s', '3c'],
-        boardTexture: {
-          wetness: 'Seco (Dry)',
-          suitPattern: 'Rainbow',
-          highCard: 'A',
-          isPaired: false,
-          summary: 'Seco (Dry) · A-high · Rainbow'
-        },
-        street: 'flop',
-        heroPos: 'BB',
-        villainPos: 'BTN',
-        potBB: 19.5,
-        chosenAction: 'Bet 75% Pot',
-        bestAction: 'Bet 33% Pot',
-        chosenFrequency: 0.04,
-        bestFrequency: 0.78,
-        evLossBB: 1.45,
-        evLossChips: 2.9,
-        evLossPercentOfPot: 7.4,
-        isMistakeThresholdExceeded: true,
-        grade: 'blunder',
-        leakCategory: 'Sobre-apuesta en Botes 3-Bet',
-        prescriptiveFix: 'En 3-bet pots con As alto y SPR bajo (~4), apuesta 25-33% pot para mantener pagando a manos dominadas.'
-      },
-      {
-        id: 'seed-mistake-2',
-        timestamp: Date.now() - 3600000 * 6,
-        scenarioTitle: 'Flop Monocolor (Kh 8h 3h)',
-        heroCombo: 'KdQc',
-        boardCards: ['Kh', '8h', '3h'],
-        boardTexture: {
-          wetness: 'Monótono (Monotone)',
-          suitPattern: 'Monotone',
-          highCard: 'K',
-          isPaired: false,
-          summary: 'Monótono (Monotone) · K-high · Monotone'
-        },
-        street: 'flop',
-        heroPos: 'CO',
-        villainPos: 'BB',
-        potBB: 6.5,
-        chosenAction: 'Bet 75% Pot',
-        bestAction: 'Check Behind',
-        chosenFrequency: 0.02,
-        bestFrequency: 0.84,
-        evLossBB: 0.95,
-        evLossChips: 1.9,
-        evLossPercentOfPot: 6.2,
-        isMistakeThresholdExceeded: true,
-        grade: 'blunder',
-        leakCategory: 'Sobre-inversión en Mesas Monocolor sin Blocker',
-        prescriptiveFix: 'En mesas con 3 cartas del mismo palo, pasa detrás con parejas altas que no tengan el As del color para controlar el bote.'
-      }
-    ];
-    this.totalRecordedDecisions = this.mistakes.length;
-    this.saveToStorage();
+    // Fresh per-user start: zero fake mistakes until the user actually trains
+    this.mistakes = [];
+    this.totalRecordedDecisions = 0;
+    this.saveToStorage(false);
   }
 
-  private saveToStorage(): void {
+  private saveToStorage(emitEvent = true): void {
     try {
-      localStorage.setItem(LEARNER_STORAGE_KEY, JSON.stringify(this.mistakes));
-      window.dispatchEvent(new Event(LEARNER_UPDATE_EVENT));
+      writeScopedItem(LEARNER_STORAGE_KEY, JSON.stringify(this.mistakes));
+      if (emitEvent && typeof window !== 'undefined') {
+        window.dispatchEvent(new Event(LEARNER_UPDATE_EVENT));
+      }
     } catch (e) {
       // ignore
     }

@@ -23,7 +23,6 @@ export const StrategyMatrixView: React.FC<StrategyMatrixViewProps> = ({
   boardCards
 }) => {
   const [hoveredHand, setHoveredHand] = useState<string | null>(null);
-  const [filterAction, setFilterAction] = useState<string>('ALL');
 
   if (!strategyResult) {
     return (
@@ -68,14 +67,14 @@ export const StrategyMatrixView: React.FC<StrategyMatrixViewProps> = ({
         <div>
           <div className="flex items-center gap-2">
             <span className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
-              Strategy at Node: {selectedNode.id}
+              Estrategia en Nodo: {selectedNode.id}
             </span>
             <span className="text-xs font-mono text-emerald-400">
-              · {selectedNode.player} to Act
+              · Turno {selectedNode.player}
             </span>
           </div>
-          <p className="text-xs text-neutral-500 mt-0.5">
-            Pot: {selectedNode.pot} chips · Stacks: OOP {selectedNode.stacks.OOP} / IP {selectedNode.stacks.IP}
+          <p className="text-xs text-neutral-500 mt-0.5 tabular-nums">
+            Bote: {selectedNode.pot} fichas · Stacks: OOP {selectedNode.stacks.OOP} / IP {selectedNode.stacks.IP}
           </p>
         </div>
 
@@ -156,7 +155,7 @@ export const StrategyMatrixView: React.FC<StrategyMatrixViewProps> = ({
           <div className="flex items-center gap-2">
             <span className="font-bold text-white text-sm">{hoveredHand}</span>
             <span className="text-neutral-500 font-mono">
-              ({getActiveComboCount(hoveredHand, boardCards)} combos active)
+              ({getActiveComboCount(hoveredHand, boardCards)} combos activos)
             </span>
           </div>
 
@@ -176,7 +175,7 @@ export const StrategyMatrixView: React.FC<StrategyMatrixViewProps> = ({
         </div>
       ) : (
         <div className="p-2 text-center text-xs text-neutral-500 font-mono">
-          Hover over any hand in the matrix to view specific action frequencies
+          Pasa el cursor sobre cualquier mano de la matriz para ver sus frecuencias exactas
         </div>
       )}
     </div>

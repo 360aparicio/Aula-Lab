@@ -5,11 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build",
+    "dev:admin": "npm --prefix admin-console run dev",
+    "build": "vite build && npm --prefix admin-console run build",
+    "build:admin": "npm --prefix admin-console run build",
+    "build:all": "vite build && npm --prefix admin-console run build",
     "start": "NODE_ENV=production node server.ts",
     "preview": "vite preview",
-    "clean": "rm -rf dist server.js",
+    "clean": "rm -rf dist admin-console/dist server.js",
     "lint": "tsc --noEmit",
+    "lint:all": "tsc --noEmit && npm --prefix admin-console run lint",
     "test": "tsx tests/run_all.ts"
   },
   "dependencies": {
@@ -21,6 +25,7 @@
     "express": "^4.21.2",
     "firebase": "^13.3.0",
     "firebase-admin": "^14.5.1",
+    "jszip": "^3.10.2",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "react": "^19.0.1",

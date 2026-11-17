@@ -193,9 +193,12 @@ export function getAutoMatchupProfile(
     } else if (heroPos === 'BTN') {
       heroRangeStr = PREFLOP_RANGES.BTN_FLAT_CO;
       suggestedHeroHands = ['TdTs', 'AhJd', 'QhJd', '8h7h', 'KhQd'];
+    } else if (heroPos === 'SB') {
+      heroRangeStr = PREFLOP_RANGES.SB_DEF_VS_BTN;
+      suggestedHeroHands = ['9h9d', 'KdQd', 'AdTd', 'JhTs', 'QhJh'];
     } else {
-      heroRangeStr = PREFLOP_RANGES.BB_DEF_VS_BTN;
-      suggestedHeroHands = ['Th9h', '8h8d', 'KdJd', 'AdTd', '7h6h'];
+      heroRangeStr = 'JJ-77,AQs-ATs,KQs-KJs,QJs,JTs,T9s,AQo';
+      suggestedHeroHands = ['Th9h', '8h8d', 'KdJd', 'AdTd', '9h9d'];
     }
 
     spotLabel = `${villainPos} abrió vs Call de Hero en ${heroPos}`;
@@ -214,10 +217,14 @@ export function getAutoMatchupProfile(
       heroRangeStr = PREFLOP_RANGES.BB_3BET_VS_BTN;
       villainRangeStr = PREFLOP_RANGES.BTN_DEF_VS_3BET;
       suggestedHeroHands = ['AhKh', 'JhJd', 'Ad4d', 'KhQh', '8h7h'];
-    } else {
+    } else if (heroPos === 'SB') {
       heroRangeStr = PREFLOP_RANGES.SB_3BET_VS_BTN;
       villainRangeStr = PREFLOP_RANGES.BTN_DEF_VS_3BET;
       suggestedHeroHands = ['AhQd', 'KhKd', 'Ad3d', 'QhJd', '9h9d'];
+    } else {
+      heroRangeStr = PREFLOP_RANGES.BTN_3BET_VS_CO;
+      villainRangeStr = PREFLOP_RANGES.CO_DEF_VS_3BET;
+      suggestedHeroHands = ['AhQd', 'KhKd', 'Ad5d', 'QhJd', 'KhQd'];
     }
 
     spotLabel = `Bote 3-Bet: Hero 3-Betea desde ${heroPos} vs ${villainPos}`;

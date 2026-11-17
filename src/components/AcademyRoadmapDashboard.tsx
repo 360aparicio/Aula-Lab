@@ -33,6 +33,9 @@ import {
   type AcademyCategory,
   type QuizScenario
 } from '../engine/academySpots';
+import { auth } from '../lib/firebase';
+import { readScopedItem, writeScopedItem } from '../lib/userStorage';
+import { loadEvaluationStats } from './EvaluationModule';
 import {
   GraduationCap,
   Award,
@@ -70,7 +73,11 @@ const CATEGORIES: { id: AcademyCategory; label: string; icon: string }[] = [
   { id: 'bluff_catch', label: 'Bluff Catching', icon: '🎯' }
 ];
 
-interface RoadmapPhase {
+export const ACADEMY_STATS_STORAGE_KEY = 'gto_academy_stats';
+export const CAREER_ROADMAP_STORAGE_KEY = 'gto_career_roadmap';
+export const QUIZ_ELO_STORAGE_KEY = 'gto_academy_quiz_elo';
+
+export interface RoadmapPhase {
   id: number;
   name: string;
   badge: string;
@@ -79,7 +86,7 @@ interface RoadmapPhase {
   milestones: { id: string; text: string; done: boolean }[];
 }
 
-const INITIAL_ROADMAP: RoadmapPhase[] = [
+export const INITIAL_ROADMAP: RoadmapPhase[] = [
   {
     id: 1,
     name: 'Fase 1: Gestión de Bankroll y Micro-Límites',
@@ -87,8 +94,8 @@ const INITIAL_ROADMAP: RoadmapPhase[] = [
     description: 'Aprende a sobrevivir a la varianza y a construir disciplina matemática antes de subir de nivel.',
     targetLevel: 'NL02 -> NL05',
     milestones: [
-      { id: 'm1_1', text: 'Mantener mínimo 40 Cajas (Buy-ins) en la sala para el nivel actual (80€ para NL02).', done: true },
-      { id: 'm1_2', text: 'Regla de Stop-Loss estricta: Cerrar sesión tras perder 3 cajas en el mismo día.', done: true },
+      { id: 'm1_1', text: 'Mantener mínimo 40 Cajas (Buy-ins) en la sala para el nivel actual (80€ para NL02).', done: false },
+      { id: 'm1_2', text: 'Regla de Stop-Loss estricta: Cerrar sesión tras perder 3 cajas en el mismo día.', done: false },
       { id: 'm1_3', text: 'Descender de nivel de inmediato si el bankroll cae por debajo de 30 cajas.', done: false },
       { id: 'm1_4', text: 'Registrar resultados de sesión (Winrate en bb/100 manos) sin mirar la gráfica intra-sesión.', done: false }
     ]
@@ -100,7 +107,7 @@ const INITIAL_ROADMAP: RoadmapPhase[] = [
     description: 'Elimina los sesgos emocionales y los errores provocados por bad beats o frustración.',
     targetLevel: 'NL05 -> NL10',
     milestones: [
-      { id: 'm2_1', text: 'Eliminar el "Tilt de Venganza" tras perder botes contra Calling Stations.', done: true },
+      { id: 'm2_1', text: 'Eliminar el "Tilt de Venganza" tras perder botes contra Calling Stations.', done: false },
       { id: 'm2_2', text: 'Aceptar la probabilidad: Un 80% de equity pierde 1 de cada 5 veces matemáticamente.', done: false },
       { id: 'm2_3', text: 'Tomar pausas de 10 minutos cada 60-90 minutos continuos de juego.', done: false },
       { id: 'm2_4', text: 'Revisar las 5 manos más costosas del día en frío (fuera de las mesas con el solver).', done: false }
@@ -113,7 +120,7 @@ const INITIAL_ROADMAP: RoadmapPhase[] = [
     description: 'Dominio de rangos GTO, cálculo mental de Pot Odds, SPR y juego posicional balanceado.',
     targetLevel: 'NL10 -> NL25',
     milestones: [
-      { id: 'm3_1', text: 'Memorizar rangos de apertura RFI de las 6 posiciones de memoria.', done: true },
+      { id: 'm3_1', text: 'Memorizar rangos de apertura RFI de las 6 posiciones de memoria.', done: false },
       { id: 'm3_2', text: 'Calcular Pot Odds y Equity instantáneamente ante cualquier sizing rival.', done: false },
       { id: 'm3_3', text: 'Diferenciar familias de texturas para elegir el tamaño de C-Bet adecuado (33% vs 75%).', done: false },
       { id: 'm3_4', text: 'Construir rangos de 4-bet bluff con bloqueadores de Ases/Reyes suited.', done: false }
@@ -142,12 +149,13 @@ export const AcademyRoadmapDashboard: React.FC = () => {
   const [hasAnswered, setHasAnswered] = useState(false);
   const [cardSavedToast, setCardSavedToast] = useState(false);
 
-  // Infinite Procedural Quiz + 30s Timer + ELO progression
+  // Infinite Procedural Quiz + 30s Timer + ELO progression + Shuffled Category Cycle
   const [isInfiniteQuizMode, setIsInfiniteQuizMode] = useState<boolean>(false);
   const [quizSecondsLeft, setQuizSecondsLeft] = useState<number>(30);
+  const quizCategoryDeckRef = useRef<AcademyCategory[]>([]);
   const [quizElo, setQuizElo] = useState<number>(() => {
     try {
-      const saved = localStorage.getItem('gto_academy_quiz_elo');
+      const saved = readScopedItem(QUIZ_ELO_STORAGE_KEY);
       return saved ? Number(saved) || 1200 : 1200;
     } catch {
       return 1200;
@@ -160,6 +168,53 @@ export const AcademyRoadmapDashboard: React.FC = () => {
   const [lastRatedGrade, setLastRatedGrade] = useState<number | null>(null);
   const [sm2Stats, setSm2Stats] = useState(() => SpacedRepetitionManager.getInstance().getStats());
   const [sm2ItemsFilter, setSm2ItemsFilter] = useState<'all' | 'due' | 'concepts' | 'hands'>('all');
+
+  // AI Personalized Career Roadmap state
+  const [aiRoadmap, setAiRoadmap] = useState<{
+    headline: string;
+    weeklyGoal: string;
+    steps: Array<{ title: string; action: string; focusArea: string }>;
+  } | null>(null);
+  const [generatingAiRoadmap, setGeneratingAiRoadmap] = useState<boolean>(false);
+  const [aiRoadmapError, setAiRoadmapError] = useState<string | null>(null);
+
+  const handleGenerateAiRoadmap = async () => {
+    setGeneratingAiRoadmap(true);
+    setAiRoadmapError(null);
+    try {
+      const token = auth.currentUser ? await auth.currentUser.getIdToken() : null;
+      const evalSummary = loadEvaluationStats();
+      const learningProfile = AutoLearningEngine.getInstance().getProfile();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers.Authorization = `Bearer ${token}`;
+
+      const res = await fetch('/api/gemini/roadmap', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          masteryScore: learningProfile.masteryScore || 75,
+          elo: quizElo,
+          currentLevel: evalSummary.unlockedLevel || 1,
+          weakestCategory: evalSummary.weakestCategory || 'Botes 3-Bet',
+          strongestCategory: evalSummary.strongestCategory || 'Flops Secos'
+        })
+      });
+      const payload = await res.json();
+      if (!res.ok) {
+        setAiRoadmapError(payload?.error || 'No se pudo generar el plan de carrera personalizado.');
+      } else {
+        setAiRoadmap({
+          headline: payload.headline,
+          weeklyGoal: payload.weeklyGoal,
+          steps: Array.isArray(payload.steps) ? payload.steps : []
+        });
+      }
+    } catch (err) {
+      setAiRoadmapError(err instanceof Error ? err.message : 'Error de red generando plan IA.');
+    } finally {
+      setGeneratingAiRoadmap(false);
+    }
+  };
 
   // Listen for SM-2 updates
   useEffect(() => {
@@ -196,32 +251,19 @@ export const AcademyRoadmapDashboard: React.FC = () => {
     setTimeout(() => setConceptRatedToast(null), 4000);
   };
 
-  // Stats storage in localStorage
+  // Clean per-user category stats (starts empty for new students)
   const [categoryStats, setCategoryStats] = useState<Record<string, { attempts: number; correct: number }>>(() => {
     try {
-      const saved = localStorage.getItem('gto_academy_stats');
+      const saved = readScopedItem(ACADEMY_STATS_STORAGE_KEY);
       if (saved) return JSON.parse(saved);
     } catch (e) {}
-    return {
-      dry_flop: { attempts: 12, correct: 10 },
-      wet_flop: { attempts: 10, correct: 7 },
-      monotone_flop: { attempts: 8, correct: 5 },
-      paired_flop: { attempts: 14, correct: 12 },
-      three_bet_pot: { attempts: 9, correct: 6 },
-      squeeze: { attempts: 7, correct: 5 },
-      rol: { attempts: 11, correct: 10 },
-      open_raise: { attempts: 15, correct: 14 },
-      four_bet: { attempts: 8, correct: 6 },
-      limp_reraise: { attempts: 6, correct: 5 },
-      blind_defense: { attempts: 12, correct: 10 },
-      bluff_catch: { attempts: 9, correct: 7 }
-    };
+    return {};
   });
 
-  // Roadmap storage
+  // Roadmap storage scoped by user
   const [roadmap, setRoadmap] = useState<RoadmapPhase[]>(() => {
     try {
-      const saved = localStorage.getItem('gto_career_roadmap');
+      const saved = readScopedItem(CAREER_ROADMAP_STORAGE_KEY);
       if (saved) return JSON.parse(saved);
     } catch (e) {}
     return INITIAL_ROADMAP;
@@ -229,13 +271,13 @@ export const AcademyRoadmapDashboard: React.FC = () => {
 
   useEffect(() => {
     try {
-      localStorage.setItem('gto_academy_stats', JSON.stringify(categoryStats));
+      writeScopedItem(ACADEMY_STATS_STORAGE_KEY, JSON.stringify(categoryStats));
     } catch (e) {}
   }, [categoryStats]);
 
   useEffect(() => {
     try {
-      localStorage.setItem('gto_career_roadmap', JSON.stringify(roadmap));
+      writeScopedItem(CAREER_ROADMAP_STORAGE_KEY, JSON.stringify(roadmap));
     } catch (e) {}
   }, [roadmap]);
 
@@ -254,7 +296,7 @@ export const AcademyRoadmapDashboard: React.FC = () => {
   // Sync quiz ELO
   useEffect(() => {
     try {
-      localStorage.setItem('gto_academy_quiz_elo', String(quizElo));
+      writeScopedItem(QUIZ_ELO_STORAGE_KEY, String(quizElo));
     } catch {}
   }, [quizElo]);
 
@@ -363,12 +405,23 @@ export const AcademyRoadmapDashboard: React.FC = () => {
     });
   };
 
-  // Next Hand generator: guarantees advancing to a genuinely different hand/board spot
+  // Next Hand generator: guarantees advancing to a genuinely different category/hand/board spot
   const handleNextHand = () => {
-    const nextCat = isInfiniteQuizMode
-      ? CATEGORIES[Math.floor(Math.random() * CATEGORIES.length)].id
-      : activeCategory;
+    let nextCat: AcademyCategory = activeCategory;
     if (isInfiniteQuizMode) {
+      if (quizCategoryDeckRef.current.length === 0) {
+        const shuffled = CATEGORIES.map(c => c.id);
+        for (let i = shuffled.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+        // Avoid repeating the immediate last category when starting a new cycle
+        if (shuffled.length > 1 && shuffled[shuffled.length - 1] === activeCategory) {
+          [shuffled[0], shuffled[shuffled.length - 1]] = [shuffled[shuffled.length - 1], shuffled[0]];
+        }
+        quizCategoryDeckRef.current = shuffled;
+      }
+      nextCat = quizCategoryDeckRef.current.pop() || activeCategory;
       setActiveCategory(nextCat);
     }
     setCurrentScenario(getNextAcademyScenario(nextCat, currentScenario.id));
@@ -434,7 +487,7 @@ export const AcademyRoadmapDashboard: React.FC = () => {
 
     const data = CATEGORIES.slice(0, 7).map(c => {
       const stat = categoryStats[c.id] || { attempts: 0, correct: 0 };
-      const pct = stat.attempts > 0 ? Math.round((stat.correct / stat.attempts) * 100) : 50;
+      const pct = stat.attempts > 0 ? Math.round((stat.correct / stat.attempts) * 100) : 0;
       return { name: c.label.replace('Flops ', '').replace('Flop ', ''), pct, attempts: stat.attempts };
     });
 
@@ -520,7 +573,7 @@ export const AcademyRoadmapDashboard: React.FC = () => {
       totalAttempts += s.attempts;
       totalCorrect += s.correct;
     });
-    return totalAttempts > 0 ? Math.round((totalCorrect / totalAttempts) * 100) : 78;
+    return totalAttempts > 0 ? Math.round((totalCorrect / totalAttempts) * 100) : 0;
   }, [categoryStats]);
 
   return (
@@ -532,10 +585,10 @@ export const AcademyRoadmapDashboard: React.FC = () => {
             <GraduationCap className="w-6 h-6" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-white flex items-center gap-2">
-              Academia de Póker Interactiva & Dashboard D3.js
-              <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-950 border border-blue-800 text-blue-300 font-mono">
-                V3.2 Pro · NL02 ➔ NL100
+            <h2 className="text-xl font-bold text-white flex items-center gap-2 flex-wrap">
+              <span>Academia de Póker Interactiva & Dashboard D3.js</span>
+              <span className="text-xs text-blue-400 font-mono">
+                · V4.2 Pro · NL02 ➔ NL100
               </span>
             </h2>
             <p className="text-xs text-neutral-400 mt-0.5">
@@ -985,7 +1038,47 @@ export const AcademyRoadmapDashboard: React.FC = () => {
                 4 fases secuenciales con hitos de Bankroll, Mindset, Técnica y Análisis de Datos. Guarda tu progreso automáticamente.
               </p>
             </div>
+            <button
+              type="button"
+              onClick={() => void handleGenerateAiRoadmap()}
+              disabled={generatingAiRoadmap}
+              className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-blue-500/20 cursor-pointer disabled:opacity-60 shrink-0"
+            >
+              <Sparkles className={`w-3.5 h-3.5 ${generatingAiRoadmap ? 'animate-spin' : ''}`} />
+              <span>{generatingAiRoadmap ? 'Generando Plan IA...' : 'Plan Personalizado Gemini AI'}</span>
+            </button>
           </div>
+
+          {aiRoadmapError && (
+            <div className="p-3 bg-rose-950/50 border border-rose-700/60 rounded-xl text-xs text-rose-200">
+              {aiRoadmapError}
+            </div>
+          )}
+
+          {aiRoadmap && (
+            <div className="p-5 bg-blue-950/20 border border-blue-500/40 rounded-2xl space-y-3 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="font-bold text-blue-300 flex items-center gap-2 text-sm">
+                  <Sparkles className="w-4 h-4" />
+                  <span>{aiRoadmap.headline}</span>
+                </div>
+                <span className="font-mono text-[11px] px-2.5 py-0.5 rounded bg-neutral-950 border border-blue-500/40 text-cyan-300">
+                  Meta: {aiRoadmap.weeklyGoal}
+                </span>
+              </div>
+              {aiRoadmap.steps.length > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {aiRoadmap.steps.map((st, idx) => (
+                    <div key={idx} className="p-3.5 bg-neutral-950 border border-neutral-800 rounded-xl space-y-1">
+                      <div className="text-[10px] font-mono uppercase text-blue-400">{st.focusArea}</div>
+                      <div className="font-bold text-white">{idx + 1}. {st.title}</div>
+                      <p className="text-[11px] text-neutral-300 leading-relaxed">{st.action}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {roadmap.map(phase => {

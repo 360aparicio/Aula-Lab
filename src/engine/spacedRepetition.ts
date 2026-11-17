@@ -9,6 +9,8 @@
  * la fecha óptima del próximo repaso según la curva de olvido de Ebbinghaus.
  */
 
+import { readScopedItem, writeScopedItem } from '../lib/userStorage';
+
 export type SM2ItemType = 'concept' | 'hand' | 'scenario';
 
 export interface SM2ReviewLog {
@@ -240,9 +242,28 @@ export class SpacedRepetitionManager {
     return SpacedRepetitionManager.instance;
   }
 
+  public reloadForActiveUser(): void {
+    this.items.clear();
+    this.loadFromStorage();
+  }
+
+  public mergeItemsFromCloud(cloudItems: SM2Item[]): void {
+    if (!Array.isArray(cloudItems) || cloudItems.length === 0) return;
+    let changed = false;
+    for (const ci of cloudItems) {
+      if (!this.items.has(ci.id)) {
+        this.items.set(ci.id, ci);
+        changed = true;
+      }
+    }
+    if (changed) {
+      this.saveToStorage(false);
+    }
+  }
+
   private loadFromStorage(): void {
     try {
-      const raw = localStorage.getItem(SM2_STORAGE_KEY);
+      const raw = readScopedItem(SM2_STORAGE_KEY);
       if (raw) {
         const parsed: SM2Item[] = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.length > 0) {
@@ -255,17 +276,28 @@ export class SpacedRepetitionManager {
       // fallback
     }
 
-    // Seed defaults
+    // Seed clean starter cards isolated to this user's own deck
     this.items.clear();
-    SEED_ITEMS.forEach(item => this.items.set(item.id, item));
-    this.saveToStorage();
+    const now = Date.now();
+    SEED_ITEMS.forEach(item =>
+      this.items.set(item.id, {
+        ...item,
+        content: { ...item.content },
+        nextReviewDate: now,
+        createdDate: now - 86400000,
+        history: []
+      })
+    );
+    this.saveToStorage(false);
   }
 
-  private saveToStorage(): void {
+  private saveToStorage(emitEvent = true): void {
     try {
       const list = Array.from(this.items.values());
-      localStorage.setItem(SM2_STORAGE_KEY, JSON.stringify(list));
-      window.dispatchEvent(new Event(SM2_UPDATE_EVENT));
+      writeScopedItem(SM2_STORAGE_KEY, JSON.stringify(list));
+      if (emitEvent && typeof window !== 'undefined') {
+        window.dispatchEvent(new Event(SM2_UPDATE_EVENT));
+      }
     } catch (e) {
       // ignore
     }

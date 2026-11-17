@@ -1,8 +1,9 @@
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
- * 
- * GTO Studio — Desktop & Web No-Limit Texas Hold'em Game Theory Optimal Solver.
+ *
+ * Allin School — Plataforma propietaria de entrenamiento 6-Max,
+ * motor de equilibrio Lab Studio DCFR y sistema TheTracker2.
  */
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -21,11 +22,15 @@ import { DecisionTreeViewer } from './components/DecisionTreeViewer';
 import { StrategyMatrixView } from './components/StrategyMatrixView';
 import { NodeEvDistributionChart } from './components/NodeEvDistributionChart';
 import { TrainerModule } from './components/TrainerModule';
+import { TrainerMode } from './components/TrainerMode';
+import { HandHistoryImporter } from './components/HandHistoryImporter';
 import { ThinkingProcessWizard } from './components/ThinkingProcessWizard';
 import { ScenarioManager } from './components/ScenarioManager';
 import { BenchmarkAndDocs } from './components/BenchmarkAndDocs';
 import { PositionalCheatSheet } from './components/PositionalCheatSheet';
 import { AcademyRoadmapDashboard } from './components/AcademyRoadmapDashboard';
+import type { SimPosition, SimScenarioType } from './engine/handSimulator';
+import type { ParsedHandRecord } from './engine/theTracker2Engine';
 import { PlayerLiveCoachTracker } from './components/PlayerLiveCoachTracker';
 import { SolverMetaPanel } from './components/SolverMetaPanel';
 import { TreeConfigPanel } from './components/TreeConfigPanel';
@@ -36,14 +41,119 @@ import { PreflopActionContext, getAutoMatchupProfile, OpponentProfile } from './
 import { SolverMetaUpdater } from './engine/solverMetaUpdater';
 import { useAuth } from './context/AuthContext';
 import { LoginScreen } from './components/LoginScreen';
-import { AdminDashboard } from './components/AdminDashboard';
+import { PlanBenefitsModal } from './components/PlanBenefitsModal';
+import { SupportTicketModal } from './components/SupportTicketModal';
+import { FundamentalsModule } from './components/FundamentalsModule';
+import { Onboarding60sBanner } from './components/OnboardingAndLeaksBar';
+import { LAB_SECTION_META } from './lib/planCatalog';
+import {
+  EXPERIENCE_LEVEL_META,
+  loadExperienceMode,
+  loadOnboardingState,
+  resetOnboardingState,
+  saveExperienceMode,
+  saveOnboardingState,
+  type ExperienceLevel,
+  type OnboardingGoal,
+  type OnboardingState
+} from './lib/experienceMode';
+import { db, handleFirestoreError, OperationType } from './lib/firebase';
+import { collection, limit, onSnapshot, query, where } from 'firebase/firestore';
 
-import { Play, Pause, Square, SlidersHorizontal, Compass, Lock } from 'lucide-react';
+import { Play, Pause, Square, SlidersHorizontal, Compass, Lock, Crown, Megaphone, X, Sparkles } from 'lucide-react';
+
+interface LiveAnnouncementBanner {
+  id: string;
+  title: string;
+  message: string;
+  severity: 'info' | 'success' | 'warning';
+  targetPlan: 'all' | 'free' | 'pro' | 'elite';
+}
 
 export default function App() {
-  const { user, isAuthReady, isAdmin, isPlanActive, screenMode } = useAuth();
-  const [activeTab, setActiveTab] = useState<NavTab>('wizard');
+  const { user, isAuthReady, isPlanActive } = useAuth();
+
+  if (!isAuthReady) {
+    return (
+      <div className="min-h-screen bg-black text-neutral-100 flex items-center justify-center p-6">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <div className="w-9 h-9 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
+          <div className="text-sm font-bold text-white">Allin School · Allin Studio</div>
+          <div className="text-xs text-neutral-400">Verificando sesión, Lab Studio, TheTracker2 y beneficios de tu plan...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginScreen mode="login" />;
+  }
+
+  if (!isPlanActive) {
+    return <LoginScreen mode="inactive" />;
+  }
+
+  return <LabWorkspace key={user.uid} />;
+}
+
+function LabWorkspace() {
+  const { user, isAuthReady, isAdmin, planTier, planPermissions, activePlanConfig, canAccessSection } = useAuth();
+  const canEditSolver = isAdmin || planTier === 'pro' || planTier === 'elite' || Boolean(planPermissions?.labPro);
+  const [experienceLevel, setExperienceLevel] = useState<ExperienceLevel>(() => loadExperienceMode());
+  const [activeTab, setActiveTab] = useState<NavTab>(() =>
+    loadExperienceMode() === 'beginner' ? 'fundamentals' : 'wizard'
+  );
   const [previousTab, setPreviousTab] = useState<NavTab>('wizard');
+  const [trainerViewMode, setTrainerViewMode] = useState<'live6max' | 'arena_dcfr'>('live6max');
+  const [drillTarget, setDrillTarget] = useState<{
+    pos: SimPosition | 'RANDOM';
+    scenario: SimScenarioType | 'RANDOM';
+    nonce: number;
+  } | null>(null);
+  const [showPlanBenefitsModal, setShowPlanBenefitsModal] = useState<boolean>(false);
+  const [showSupportModal, setShowSupportModal] = useState<boolean>(false);
+  const [announcements, setAnnouncements] = useState<LiveAnnouncementBanner[]>([]);
+  const [dismissedAnnIds, setDismissedAnnIds] = useState<string[]>([]);
+  const [onboardingState, setOnboardingState] = useState<OnboardingState>(() => loadOnboardingState());
+
+  const handleExperienceLevelChange = (lvl: ExperienceLevel) => {
+    setExperienceLevel(lvl);
+    saveExperienceMode(lvl);
+  };
+
+  const handleOnboardingGoal = (goal: OnboardingGoal) => {
+    const next: OnboardingState = {
+      completed: true,
+      dismissed: false,
+      goal,
+      completedAt: Date.now()
+    };
+    saveOnboardingState(next);
+    setOnboardingState(next);
+
+    if (goal === 'learn_zero') {
+      handleExperienceLevelChange('beginner');
+      setActiveTab('fundamentals');
+    } else if (goal === 'analyze_hands') {
+      handleExperienceLevelChange('recreational');
+      setActiveTab('tracker2');
+    } else {
+      handleExperienceLevelChange('pro');
+      setTrainerViewMode('live6max');
+      setActiveTab('trainer');
+    }
+  };
+
+  const handleDismissOnboarding = () => {
+    const next: OnboardingState = { ...onboardingState, dismissed: true };
+    saveOnboardingState(next);
+    setOnboardingState(next);
+  };
+
+  const handleReopenOnboarding = () => {
+    resetOnboardingState();
+    setOnboardingState({ completed: false, dismissed: false });
+  };
 
   // Positions & Preflop Action Context
   const [heroPos, setHeroPos] = useState<TablePosition>('BTN');
@@ -111,7 +221,10 @@ export default function App() {
     setSolverError(null);
 
     const runner = runnerRef.current;
-    runner.init(gameTree, boardCards, oopCombos, ipCombos, dcfrConfig);
+    runner.init(gameTree, boardCards, oopCombos, ipCombos, {
+      ...dcfrConfig,
+      simulateFutureStreets: dcfrConfig.simulateFutureStreets ?? boardCards.length < 5
+    });
 
     runner.setCallbacks({
       onProgress: (prog) => {
@@ -165,7 +278,8 @@ export default function App() {
     setIpRange(parseRangeString(ipStr, `${isHeroOop ? villainPos : heroPos} (IP)`));
     setTreeConfig(prev => ({
       ...prev,
-      startingPot: matchup.potChips
+      startingPot: matchup.potChips,
+      effectiveStack: Math.round(matchup.effectiveStackBB * 10)
     }));
     setScenarioTitle(matchup.spotLabel);
   };
@@ -181,7 +295,8 @@ export default function App() {
     setIpRange(parseRangeString(ipStr, `${isHeroOop ? villainPos : heroPos} (IP)`));
     setTreeConfig(prev => ({
       ...prev,
-      startingPot: profile.potChips
+      startingPot: profile.potChips,
+      effectiveStack: Math.round(profile.effectiveStackBB * 10)
     }));
     setScenarioTitle(profile.spotLabel);
   };
@@ -201,7 +316,8 @@ export default function App() {
     setIpRange(parseRangeString(ipStr, `${isHeroOop ? vPos : pos} (IP)`));
     setTreeConfig(prev => ({
       ...prev,
-      startingPot: profile.potChips
+      startingPot: profile.potChips,
+      effectiveStack: Math.round(profile.effectiveStackBB * 10)
     }));
     setScenarioTitle(profile.spotLabel);
   };
@@ -221,7 +337,8 @@ export default function App() {
     setIpRange(parseRangeString(ipStr, `${isHeroOop ? pos : hPos} (IP)`));
     setTreeConfig(prev => ({
       ...prev,
-      startingPot: profile.potChips
+      startingPot: profile.potChips,
+      effectiveStack: Math.round(profile.effectiveStackBB * 10)
     }));
     setScenarioTitle(profile.spotLabel);
   };
@@ -240,7 +357,8 @@ export default function App() {
     setIpRange(parseRangeString(ipStr, `${isHeroOop ? newVillain : newHero} (IP)`));
     setTreeConfig(prev => ({
       ...prev,
-      startingPot: profile.potChips
+      startingPot: profile.potChips,
+      effectiveStack: Math.round(profile.effectiveStackBB * 10)
     }));
     setScenarioTitle(profile.spotLabel);
   };
@@ -294,13 +412,31 @@ export default function App() {
     setHeroCards([c1, c2]);
   };
 
+  const recentRandomCardKeysRef = useRef<string[]>([]);
+
   const handleRandomHeroCards = () => {
     const isIp = getPostflopRole(heroPos, villainPos) === 'IP';
     const combos = isIp ? ipCombos : oopCombos;
-    if (combos.length > 0) {
-      const idx = Math.floor(Math.random() * combos.length);
-      setHeroCards([combos[idx].combo.card1, combos[idx].combo.card2]);
+    if (combos.length === 0) return;
+
+    const currentKey =
+      heroCards ? `${heroCards[0].id}-${heroCards[1].id}` : null;
+    if (recentRandomCardKeysRef.current.length >= combos.length) {
+      recentRandomCardKeysRef.current = currentKey ? [currentKey] : [];
     }
+
+    const excluded = new Set(recentRandomCardKeysRef.current);
+    if (currentKey) excluded.add(currentKey);
+
+    const fresh = combos.filter(c => !excluded.has(`${c.combo.card1.id}-${c.combo.card2.id}`));
+    const pool = fresh.length > 0 ? fresh : combos;
+    const chosen = pool[Math.floor(Math.random() * pool.length)];
+    const chosenKey = `${chosen.combo.card1.id}-${chosen.combo.card2.id}`;
+    recentRandomCardKeysRef.current = [
+      ...recentRandomCardKeysRef.current.filter(k => k !== chosenKey).slice(-9),
+      chosenKey
+    ];
+    setHeroCards([chosen.combo.card1, chosen.combo.card2]);
   };
 
   const handleLoadScenario = (sc: PrebuiltScenario) => {
@@ -348,12 +484,77 @@ export default function App() {
 
   const handleTrainScenario = (sc: PrebuiltScenario) => {
     handleSelectScenarioInTrainer(sc);
+    setTrainerViewMode('arena_dcfr');
     setActiveTab('trainer');
   };
 
   const handleGoToTrainer = (fromTab: NavTab = activeTab) => {
     setPreviousTab(fromTab);
+    setTrainerViewMode('arena_dcfr');
     setActiveTab('trainer');
+  };
+
+  const handleLaunchDiagnosticDrill = (
+    pos: SimPosition | 'RANDOM',
+    scenario: SimScenarioType | 'RANDOM'
+  ) => {
+    setDrillTarget({ pos, scenario, nonce: Date.now() });
+    setTrainerViewMode('live6max');
+    setActiveTab('trainer');
+  };
+
+  // Unified Allin School workflow: load any hand from TheTracker2 directly into Lab Studio
+  const handleLoadHandInLabStudio = (hand: ParsedHandRecord) => {
+    const tokens = (hand.boardStr || '').trim().split(/\s+/).filter(Boolean);
+    const parsedBoard: Card[] = [];
+    for (const tok of tokens) {
+      try {
+        if (tok.length === 2) parsedBoard.push(parseCard(tok));
+      } catch {
+        // skip invalid token
+      }
+    }
+    if (parsedBoard.length >= 3) {
+      const targetStreet: 'flop' | 'turn' | 'river' =
+        parsedBoard.length >= 5 ? 'river' : parsedBoard.length === 4 ? 'turn' : 'flop';
+      setStreet(targetStreet);
+      setBoardCards(parsedBoard.slice(0, 5));
+    } else {
+      setStreet('flop');
+      setBoardCards([parseCard('As'), parseCard('7d'), parseCard('2c')]);
+    }
+
+    const hTok = (hand.heroCardsStr || '').replace(/\s+/g, '');
+    if (hTok.length === 4 && !hTok.includes('?')) {
+      try {
+        setHeroCards([parseCard(hTok.slice(0, 2)), parseCard(hTok.slice(2, 4))]);
+      } catch {
+        // ignore unparseable cards
+      }
+    }
+
+    const mappedHero: TablePosition = hand.heroPos;
+    const mappedVillain: TablePosition = mappedHero === 'BB' ? 'BTN' : 'BB';
+    const mappedAction: PreflopActionContext =
+      hand.potType === '4Bet' ? '4BET' : hand.potType === '3Bet' ? '3BET' : 'RFI';
+    setHeroPos(mappedHero);
+    setVillainPos(mappedVillain);
+    setPreflopAction(mappedAction);
+
+    const profile = getAutoMatchupProfile(mappedHero, mappedVillain, mappedAction, opponentProfile);
+    const isHeroOop = profile.heroRole === 'OOP';
+    const oopStr = isHeroOop ? profile.heroRangeStr : profile.villainRangeStr;
+    const ipStr = isHeroOop ? profile.villainRangeStr : profile.heroRangeStr;
+    setOopRange(parseRangeString(oopStr, `${isHeroOop ? mappedHero : mappedVillain} (OOP)`));
+    setIpRange(parseRangeString(ipStr, `${isHeroOop ? mappedVillain : mappedHero} (IP)`));
+    setTreeConfig(prev => ({
+      ...prev,
+      startingPot: profile.potChips,
+      effectiveStack: Math.round(profile.effectiveStackBB * 10)
+    }));
+    setScenarioTitle(`TheTracker2 #${hand.handKey} · ${profile.spotLabel}`);
+    setSolveResult(null);
+    setActiveTab('solver');
   };
 
   // Live Auto-Solve effect: whenever gameTree, boardCards, or combos change,
@@ -376,60 +577,230 @@ export default function App() {
     }, 120);
 
     return () => clearTimeout(timer);
-  }, [gameTree, boardCards, oopCombos.length, ipCombos.length]);
+  }, [gameTree, boardCards, oopCombos.length, ipCombos.length, dcfrConfig]);
+
+  // Real-time listener on active Admin announcements (/platformAnnouncements where active == true)
+  useEffect(() => {
+    if (!isAuthReady || !user || !user.emailVerified) {
+      setAnnouncements([]);
+      return;
+    }
+
+    const q = query(
+      collection(db, 'platformAnnouncements'),
+      where('active', '==', true),
+      limit(10)
+    );
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        const list: LiveAnnouncementBanner[] = snap.docs.map(d => {
+          const data = d.data() as Record<string, unknown>;
+          return {
+            id: d.id,
+            title: String(data.title || 'Aviso del Laboratorio'),
+            message: String(data.message || ''),
+            severity:
+              data.severity === 'warning' || data.severity === 'success' ? data.severity : 'info',
+            targetPlan:
+              data.targetPlan === 'free' || data.targetPlan === 'pro' || data.targetPlan === 'elite'
+                ? data.targetPlan
+                : 'all'
+          };
+        });
+        setAnnouncements(list);
+      },
+      (err) => {
+        try {
+          handleFirestoreError(err, OperationType.LIST, 'platformAnnouncements');
+        } catch {
+          // Avoid crashing UI on transient announcement fetch issues
+        }
+      }
+    );
+
+    return () => unsubscribe();
+  }, [isAuthReady, user]);
 
   const isSolving = solverProgress?.status === 'running' || solverProgress?.status === 'paused';
 
-  if (!isAuthReady) {
-    return (
-      <div className="min-h-screen bg-black text-neutral-100 flex items-center justify-center p-6">
-        <div className="flex flex-col items-center gap-3 text-center">
-          <div className="w-9 h-9 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
-          <div className="text-sm font-bold text-white">Lab Studio V3.4 Pro</div>
-          <div className="text-xs text-neutral-400">Verificando sesión y estado de tu plan...</div>
-        </div>
-      </div>
-    );
-  }
+  const checkTabUnlocked = (tab: NavTab): boolean => {
+    if (tab === 'tracker2') {
+      return canAccessSection('trainer') || canAccessSection('solver');
+    }
+    if (tab === 'fundamentals') {
+      return canAccessSection('wizard') || canAccessSection('academy');
+    }
+    return canAccessSection(tab);
+  };
 
-  if (!user) {
-    return <LoginScreen mode="login" />;
-  }
+  // Auto-redirect to first unlocked section when Admin disables current tab + hideLockedSections is enabled
+  useEffect(() => {
+    if (!isAuthReady || !user) return;
+    if (!checkTabUnlocked(activeTab) && activePlanConfig.hideLockedSections) {
+      const firstAllowed = LAB_SECTION_META.find(sec => canAccessSection(sec.id));
+      if (firstAllowed && firstAllowed.id !== activeTab) {
+        setActiveTab(firstAllowed.id);
+      }
+    }
+  }, [isAuthReady, user, activeTab, canAccessSection, activePlanConfig.hideLockedSections]);
 
-  if (isAdmin && screenMode === 'admin') {
-    return (
-      <div className="min-h-screen bg-black text-neutral-100 flex flex-col font-sans">
-        <Header
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          onQuickSolve={handleStartSolve}
-          isSolving={isSolving}
-        />
-        <main className="flex-1 max-w-[1440px] w-full mx-auto p-4 sm:p-6">
-          <AdminDashboard />
-        </main>
-      </div>
-    );
-  }
-
-  if (!isPlanActive) {
-    return <LoginScreen mode="inactive" />;
-  }
+  const isSectionUnlocked = checkTabUnlocked(activeTab);
+  const visibleAnnouncements = announcements.filter(
+    a => (a.targetPlan === 'all' || a.targetPlan === planTier) && !dismissedAnnIds.includes(a.id)
+  );
 
   return (
     <div className="min-h-screen bg-black text-neutral-100 flex flex-col font-sans">
       {/* Universal Top Bar */}
       <Header
         activeTab={activeTab}
+        experienceLevel={experienceLevel}
         onTabChange={setActiveTab}
         onQuickSolve={handleStartSolve}
+        onOpenPlanBenefits={() => setShowPlanBenefitsModal(true)}
+        onOpenSupport={() => setShowSupportModal(true)}
         isSolving={isSolving}
       />
 
+      {/* Plan Benefits & Sections Visibility Modal */}
+      <PlanBenefitsModal
+        open={showPlanBenefitsModal}
+        onClose={() => setShowPlanBenefitsModal(false)}
+      />
+
+      {/* Student Support Ticket Modal */}
+      <SupportTicketModal
+        open={showSupportModal}
+        onClose={() => setShowSupportModal(false)}
+      />
+
       {/* Main Workspace Viewport */}
-      <main className="flex-1 max-w-[1440px] w-full mx-auto p-4 sm:p-6 flex flex-col gap-6">
+      <main className="flex-1 max-w-[1440px] w-full mx-auto p-4 sm:p-6 pb-20 md:pb-6 flex flex-col gap-6">
+        {/* Live Admin Platform Announcements */}
+        {visibleAnnouncements.length > 0 && (
+          <div className="space-y-2">
+            {visibleAnnouncements.map(ann => {
+              const cls =
+                ann.severity === 'warning'
+                  ? 'bg-amber-950/50 border-amber-500/40 text-amber-100'
+                  : ann.severity === 'success'
+                  ? 'bg-emerald-950/50 border-emerald-500/40 text-emerald-100'
+                  : 'bg-blue-950/50 border-blue-500/40 text-blue-100';
+              return (
+                <div
+                  key={ann.id}
+                  className={`px-4 py-3 rounded-xl border flex items-start justify-between gap-3 text-xs ${cls}`}
+                >
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <Megaphone className="w-4 h-4 shrink-0 mt-0.5" />
+                    <div className="min-w-0">
+                      <span className="font-bold mr-2">{ann.title}:</span>
+                      <span className="opacity-90">{ann.message}</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDismissedAnnIds(prev => [...prev, ann.id])}
+                    className="p-1 rounded-lg hover:bg-black/30 opacity-75 hover:opacity-100 cursor-pointer shrink-0"
+                    title="Ocultar aviso"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Adaptive Experience Level Selector Bar */}
+        <div className="bg-neutral-950 border border-neutral-800 rounded-2xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-xs">
+            <Sparkles className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+            <span className="font-semibold text-white">Perfil de Estudio:</span>
+            <span className="text-neutral-400 hidden sm:inline">{EXPERIENCE_LEVEL_META[experienceLevel].description}</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1 p-1 rounded-xl bg-black border border-neutral-800 text-[11px] font-semibold">
+              {(Object.keys(EXPERIENCE_LEVEL_META) as ExperienceLevel[]).map(lvl => (
+                <button
+                  key={lvl}
+                  type="button"
+                  onClick={() => handleExperienceLevelChange(lvl)}
+                  className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                    experienceLevel === lvl ? 'bg-blue-600 text-white' : 'text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  {EXPERIENCE_LEVEL_META[lvl].label}
+                </button>
+              ))}
+            </div>
+            {(onboardingState.completed || onboardingState.dismissed) && (
+              <button
+                type="button"
+                onClick={handleReopenOnboarding}
+                className="px-2.5 py-1.5 rounded-xl bg-black hover:bg-neutral-900 border border-neutral-800 text-[11px] font-semibold text-blue-300 cursor-pointer whitespace-nowrap"
+              >
+                Guía 60s
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Interactive 60s First-Run / Goal Setup Banner */}
+        {!onboardingState.completed && !onboardingState.dismissed && (
+          <Onboarding60sBanner
+            onSelectGoal={handleOnboardingGoal}
+            onDismiss={handleDismissOnboarding}
+          />
+        )}
+
         {/* Auto-Learning Live Coach & Player Tracker Banner */}
-        <PlayerLiveCoachTracker street={street} potBB={treeConfig.startingPot} />
+        <PlayerLiveCoachTracker
+          street={street}
+          potBB={Math.round((treeConfig.startingPot / 10) * 10) / 10}
+        />
+
+        {!isSectionUnlocked ? (
+          <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-8 max-w-2xl mx-auto w-full text-center space-y-4 shadow-2xl my-6">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center mx-auto">
+              <Lock className="w-6 h-6" />
+            </div>
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-mono uppercase tracking-wider text-amber-300">
+                Sección Restringida por tu Plan ({activePlanConfig.displayName})
+              </span>
+              <h2 className="text-xl font-bold text-white">
+                Esta área requiere habilitación en tu suscripción
+              </h2>
+              <p className="text-xs text-neutral-400 leading-relaxed max-w-lg mx-auto">
+                La configuración de secciones de tu plan se administra desde la Consola Administrativa Independiente.
+                Revisa tus secciones activas y beneficios disponibles en cualquier momento.
+              </p>
+            </div>
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowPlanBenefitsModal(true)}
+                className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                <Crown className="w-4 h-4 text-amber-300" />
+                <span>Ver Secciones y Beneficios</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const first = LAB_SECTION_META.find(sec => canAccessSection(sec.id));
+                  if (first) setActiveTab(first.id);
+                }}
+                className="px-4 py-2.5 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-200 text-xs font-semibold rounded-xl cursor-pointer"
+              >
+                Ir a Sección Disponible
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
 
         {solverError && (
           <div className="p-3 bg-rose-950/70 border border-rose-700 rounded-xl text-xs text-rose-200 flex items-center justify-between">
@@ -456,7 +827,20 @@ export default function App() {
             villainPos={villainPos}
             opponentProfile={opponentProfile}
             onOpponentProfileChange={handleOpponentProfileChange}
-            bbUnit={2}
+            bbUnit={10}
+          />
+        )}
+
+        {/* TAB 00: MÓDULO 0 — FUNDAMENTOS VISUALES E INTERACTIVOS */}
+        {activeTab === 'fundamentals' && (
+          <FundamentalsModule
+            experienceLevel={experienceLevel}
+            onStartTrainer={() => {
+              setTrainerViewMode('live6max');
+              setActiveTab('trainer');
+            }}
+            onStartEvaluation={() => setActiveTab('academy')}
+            onLaunchDrill={handleLaunchDiagnosticDrill}
           />
         )}
 
@@ -523,7 +907,7 @@ export default function App() {
                   <span>Proceso Paso a Paso (Auto)</span>
                 </button>
 
-                {isAdmin ? (
+                {canEditSolver ? (
                   <button
                     onClick={() => setShowConfigPanel(!showConfigPanel)}
                     className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors cursor-pointer ${
@@ -533,16 +917,16 @@ export default function App() {
                     }`}
                   >
                     <SlidersHorizontal className="w-3.5 h-3.5" />
-                    <span>Sizings &amp; Config</span>
+                    <span>Sizings, Rake &amp; Node-Lock</span>
                   </button>
                 ) : (
                   <span
-                    title="Solo las cuentas con opción Administrador en su plan pueden modificar sizings o algoritmos del motor"
+                    title="Disponible en planes Pro / Elite o cuentas autorizadas"
                     className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-mono rounded-lg bg-neutral-950 border border-neutral-800 text-neutral-400"
                   >
                     <Lock className="w-3 h-3 text-neutral-500" />
                     <span>
-                      Pot {treeConfig.startingPot} · Stack {treeConfig.effectiveStack} · {dcfrConfig.algorithm} (Solo Admin)
+                      Pot {treeConfig.startingPot} · Stack {treeConfig.effectiveStack} · {dcfrConfig.algorithm} (Plan Pro/Elite)
                     </span>
                   </span>
                 )}
@@ -586,13 +970,15 @@ export default function App() {
               </div>
             </div>
 
-            {/* Tree & Engine Config Panel (Exclusivo Admin del Plan) */}
-            {isAdmin && showConfigPanel && (
+            {/* Tree & Engine Config Panel (Pro / Elite / Admin) */}
+            {canEditSolver && showConfigPanel && (
               <TreeConfigPanel
                 treeConfig={treeConfig}
                 onTreeConfigChange={setTreeConfig}
                 dcfrConfig={dcfrConfig}
                 onDCFRConfigChange={setDcfrConfig}
+                selectedNode={selectedNode}
+                gameTree={gameTree}
               />
             )}
 
@@ -663,6 +1049,7 @@ export default function App() {
                   onAdvanceStreet={handleAdvanceStreet}
                   onRefineSolve={handleStartSolve}
                   isSolving={isSolving}
+                  bbUnit={10}
                 />
 
                 {solveResult && (
@@ -691,6 +1078,7 @@ export default function App() {
                   strategyResult={solveResult?.nodeStrategies.get(selectedNode.id)}
                   heroCards={heroCards}
                   boardCards={boardCards}
+                  bbUnit={10}
                 />
 
                 <StrategyMatrixView
@@ -709,18 +1097,18 @@ export default function App() {
             <div className="flex items-center justify-between gap-3 flex-wrap p-4 bg-neutral-900 border border-neutral-800 rounded-xl">
               <div>
                 <h2 className="text-base font-bold text-white">
-                  {isAdmin ? '13×13 Hand Range Matrix Editor (Admin)' : '13×13 Hand Range Matrix Inspector'}
+                  {canEditSolver ? '13×13 Hand Range Matrix Editor (Pro / Elite)' : '13×13 Hand Range Matrix Inspector'}
                 </h2>
                 <p className="text-xs text-neutral-400 mt-0.5">
-                  {isAdmin
+                  {canEditSolver
                     ? 'Configura distribuciones preflop ponderadas para Out-of-Position (OOP) y In-Position (IP).'
-                    : 'Inspección en modo lectura de combos y bloqueadores activos (solo los Administradores del Plan modifican matrices base).'}
+                    : 'Inspección en modo lectura de combos y bloqueadores activos (desbloqueado en planes Pro / Elite).'}
                 </p>
               </div>
-              {!isAdmin && (
+              {!canEditSolver && (
                 <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-950 border border-neutral-800 text-[11px] font-mono text-neutral-400">
                   <Lock className="w-3 h-3 text-neutral-500" />
-                  <span>Solo Uso</span>
+                  <span>Solo Lectura (Free)</span>
                 </span>
               )}
             </div>
@@ -732,7 +1120,7 @@ export default function App() {
                 boardCards={boardCards}
                 title="OOP Defense / Check Range"
                 badgeLabel="OOP"
-                readOnly={!isAdmin}
+                readOnly={!canEditSolver}
               />
 
               <RangeMatrix13x13
@@ -741,38 +1129,85 @@ export default function App() {
                 boardCards={boardCards}
                 title="IP Attack / Bet Range"
                 badgeLabel="IP"
-                readOnly={!isAdmin}
+                readOnly={!canEditSolver}
               />
             </div>
           </div>
         )}
 
-        {/* TAB 3: GTO TRAINER */}
+        {/* TAB 3: ENTRENADOR PRO 6-MAX EN VIVO + ARENA DCFR */}
         {activeTab === 'trainer' && (
-          <div className="flex flex-col gap-6">
-            <TrainerModule
-              scenarios={allScenarios}
-              activeScenario={activeScenario}
-              onSelectScenario={handleSelectScenarioInTrainer}
-              boardCards={boardCards}
-              oopCombos={oopCombos}
-              ipCombos={ipCombos}
-              activeNode={selectedNode}
-              strategyResult={solveResult?.nodeStrategies.get(selectedNode.id)}
-              nodeStrategies={solveResult?.nodeStrategies}
-              heroPos={heroPos}
-              villainPos={villainPos}
-              heroCards={heroCards}
-              onHeroPosChange={handleHeroPosChange}
-              onVillainPosChange={handleVillainPosChange}
-              onSwapPositions={handleSwapPositions}
-              onSelectHeroCards={handleSelectHeroCards}
-              onBack={() => setActiveTab(previousTab || 'wizard')}
-            />
+          <div className="flex flex-col gap-5">
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-neutral-950 border border-neutral-800 rounded-2xl px-4 py-3">
+              <div className="text-xs text-neutral-400">
+                Modo de Entrenamiento: <strong className="text-white">{trainerViewMode === 'live6max' ? 'Mesa 6-Max en Vivo (Allin School)' : 'Arena Lab Studio de Escenario'}</strong>
+              </div>
+              <div className="flex items-center p-1 rounded-xl bg-black border border-neutral-800 text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setTrainerViewMode('live6max')}
+                  className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                    trainerViewMode === 'live6max' ? 'bg-blue-600 text-white' : 'text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  Mesa 6-Max en Vivo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTrainerViewMode('arena_dcfr')}
+                  className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                    trainerViewMode === 'arena_dcfr' ? 'bg-blue-600 text-white' : 'text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  Arena Lab Studio
+                </button>
+              </div>
+            </div>
+
+            {trainerViewMode === 'live6max' ? (
+              <TrainerMode
+                drillTarget={drillTarget}
+                experienceLevel={experienceLevel}
+                onOpenDiagnostic={() => setActiveTab('tracker2')}
+              />
+            ) : (
+              <TrainerModule
+                scenarios={allScenarios}
+                activeScenario={activeScenario}
+                onSelectScenario={handleSelectScenarioInTrainer}
+                boardCards={boardCards}
+                oopCombos={oopCombos}
+                ipCombos={ipCombos}
+                activeNode={selectedNode}
+                strategyResult={solveResult?.nodeStrategies.get(selectedNode.id)}
+                nodeStrategies={solveResult?.nodeStrategies}
+                heroPos={heroPos}
+                villainPos={villainPos}
+                heroCards={heroCards}
+                onHeroPosChange={handleHeroPosChange}
+                onVillainPosChange={handleVillainPosChange}
+                onSwapPositions={handleSwapPositions}
+                bbUnit={10}
+                onSelectHeroCards={handleSelectHeroCards}
+                onBack={() => setActiveTab(previousTab || 'wizard')}
+              />
+            )}
           </div>
         )}
 
-        {/* TAB 4: POSITIONAL CHEAT SHEET & 6-MAX MANUAL (GTO & EXPLOTATIVO) */}
+        {/* TAB 3B: THETRACKER2 PRO + DIAGNÓSTICO DE NIVEL */}
+        {activeTab === 'tracker2' && (
+          <HandHistoryImporter
+            onLaunchDrill={handleLaunchDiagnosticDrill}
+            onLoadInLabStudio={handleLoadHandInLabStudio}
+            onGoToTrainer={() => {
+              setTrainerViewMode('live6max');
+              setActiveTab('trainer');
+            }}
+          />
+        )}
+
+        {/* TAB 4: POSITIONAL CHEAT SHEET & 6-MAX MANUAL */}
         {activeTab === 'cheatsheet' && (
           <PositionalCheatSheet />
         )}
@@ -798,6 +1233,8 @@ export default function App() {
         {/* TAB 5: MATH BENCHMARKS & DOCS */}
         {activeTab === 'benchmarks' && (
           <BenchmarkAndDocs />
+        )}
+          </>
         )}
       </main>
     </div>

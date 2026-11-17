@@ -7,6 +7,7 @@
  */
 
 import { Card, cardId } from './cards';
+import { readScopedJson, writeScopedJson } from '../lib/userStorage';
 
 export type AcademyCategory =
   | 'dry_flop'
@@ -1288,12 +1289,19 @@ export const ACADEMY_SCENARIO_BANK: Record<AcademyCategory, QuizScenario[]> = {
   ]
 };
 
-function shuffleScenarioOptions(sc: QuizScenario): QuizScenario {
-  const opts = [...sc.options];
-  for (let i = opts.length - 1; i > 0; i--) {
+const ACADEMY_QUEUE_KEY = 'lab_studio_academy_queue_v1';
+
+function shuffleArray<T>(arr: T[]): T[] {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [opts[i], opts[j]] = [opts[j], opts[i]];
+    [copy[i], copy[j]] = [copy[j], copy[i]];
   }
+  return copy;
+}
+
+function shuffleScenarioOptions(sc: QuizScenario): QuizScenario {
+  const opts = shuffleArray(sc.options);
   return {
     ...sc,
     heroCards: [{ ...sc.heroCards[0] }, { ...sc.heroCards[1] }],
@@ -1303,20 +1311,33 @@ function shuffleScenarioOptions(sc: QuizScenario): QuizScenario {
 }
 
 /**
- * Devuelve una mano garantizadamente distinta a `excludeId` dentro de la categoría,
- * asegurando que "Siguiente Mano Dinámica" siempre avance a un nuevo spot real
- * y que la ubicación de la respuesta correcta varíe aleatoriamente.
+ * Devuelve una mano garantizadamente nueva de la baraja no vista de la categoría para el usuario activo.
+ * Recorre TODOS los spots de la categoría antes de reiniciar el ciclo y jamás repite `excludeId` de seguido.
  */
 export function getNextAcademyScenario(
   category: AcademyCategory,
   excludeId?: string
 ): QuizScenario {
   const pool = ACADEMY_SCENARIO_BANK[category] || ACADEMY_SCENARIO_BANK.dry_flop;
-  const candidates = excludeId && pool.length > 1
-    ? pool.filter(item => item.id !== excludeId)
-    : pool;
+  const poolMap = new Map(pool.map(item => [item.id, item]));
+  const queueStore = readScopedJson<Partial<Record<AcademyCategory, string[]>>>(ACADEMY_QUEUE_KEY, {});
+  let remainingIds = Array.isArray(queueStore[category])
+    ? (queueStore[category] as string[]).filter(id => poolMap.has(id))
+    : [];
 
-  const picked = candidates[Math.floor(Math.random() * candidates.length)] || pool[0];
+  if (remainingIds.length === 0) {
+    remainingIds = shuffleArray(pool.map(item => item.id));
+    if (excludeId && remainingIds.length > 1 && remainingIds[0] === excludeId) {
+      remainingIds.push(remainingIds.shift() as string);
+    }
+  } else if (excludeId && remainingIds.length > 1 && remainingIds[0] === excludeId) {
+    remainingIds.push(remainingIds.shift() as string);
+  }
+
+  const pickedId = remainingIds.shift() || pool[0].id;
+  writeScopedJson(ACADEMY_QUEUE_KEY, { ...queueStore, [category]: remainingIds });
+
+  const picked = poolMap.get(pickedId) || pool[0];
   return shuffleScenarioOptions(picked);
 }
 
@@ -1369,12 +1390,10 @@ export function buildEvaluationExam(
 
   if (filtered.length < filters.questionCount) {
     const remaining = all.filter(s => !filtered.some(f => f.id === s.id));
-    const shuffledRemaining = [...remaining].sort(() => Math.random() - 0.5);
-    filtered = [...filtered, ...shuffledRemaining];
+    filtered = [...filtered, ...shuffleArray(remaining)];
   }
 
-  return [...filtered]
-    .sort(() => Math.random() - 0.5)
+  return shuffleArray(filtered)
     .slice(0, filters.questionCount)
     .map(shuffleScenarioOptions);
 }

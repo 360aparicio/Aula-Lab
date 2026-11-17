@@ -54,14 +54,14 @@ export interface SolverMetaState {
 }
 
 export const SOLVER_META_UPDATE_EVENT = 'solver-meta-updated';
-const LOCAL_META_CACHE_KEY = 'lab_studio_solver_meta_v31';
+const LOCAL_META_CACHE_KEY = 'allin_school_lab_meta_v1';
 
 const FALLBACK_META: SolverMetaState = {
-  version: '3.1.0-adaptive',
+  version: '4.3.0-lab-studio',
   lastInternetSyncAt: null,
   lastCollectiveUpdateAt: null,
   totalUserSamplesLearned: 42,
-  internetQuerySummary: 'Heurísticas GTO 6-Max activas. Sincroniza con internet para actualizar tendencias de solvers.',
+  internetQuerySummary: 'Heurísticas Nash 6-Max activas en Lab Studio. Sincroniza con internet para actualizar tendencias estratégicas.',
   rules: [
     {
       id: 'meta-dry-cbet',

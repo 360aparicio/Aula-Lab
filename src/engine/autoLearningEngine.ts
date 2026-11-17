@@ -9,6 +9,7 @@
  */
 
 import { SpacedRepetitionManager } from './spacedRepetition';
+import { readScopedItem, writeScopedItem } from '../lib/userStorage';
 
 export interface HandHistoryRecord {
   id: string;
@@ -69,70 +70,27 @@ export interface PlayerLearningProfile {
 const STORAGE_KEY = 'lab_studio_player_learning_profile';
 const SM2_STORAGE_KEY = 'lab_studio_sm2_flashcards';
 
-const DEFAULT_PROFILE: PlayerLearningProfile = {
-  totalDecisions: 24,
-  totalMistakes: 4,
-  averageEvLossPct: 3.2,
-  masteryScore: 84,
-  styleProfile: 'Ligeramente Desbalanceado',
-  leakCategoryCounts: {
-    'Botes 3-Bet': 2,
-    'Flops Monótonos': 1,
-    'Flops Secos': 0,
-    'Squeeze': 1,
-    'River Bluff Catching': 0
-  },
-  primaryLeak: {
-    title: 'Sobre-apuesta de tamaño en Botes 3-Bet',
-    description: 'En botes 3-Bet con SPR bajo (~4), tiendes a apostar 66%-75% del bote cuando la teoría óptima aconseja 25%-33% para mantener pagando al rango dominado.',
-    prescriptiveFix: 'Reduce tu tamaño de C-Bet en 3-Bet pots a 1/3 del bote. Ahorras fichas y extraes más de manos medias rivales.',
-    impact: 'Crítica'
-  },
-  liveTipForCurrentSpot: 'El sistema ha auto-aprendido: En esta situación, prioriza una C-Bet barata (33% pot) en vez de inflar el bote.',
-  history: [],
-  collectedHands: [
-    {
-      id: 'hh-seed-1',
-      timestamp: Date.now() - 3600000 * 2,
-      heroPos: 'BTN',
-      villainPos: 'BB',
-      heroCards: 'As Kd',
-      board: 'Kh 7c 2s',
-      street: 'flop',
-      category: 'Flop Seco (Dry)',
-      potBB: 6.5,
-      chosenAction: 'Bet 33% Pot',
-      optimalAction: 'Bet 33% Pot',
-      evLossPct: 0,
-      isMistake: false,
-      keyTakeaway: 'C-Bet pequeña en flop seco con ventaja de rango y valor directo.',
-      sm2Repetitions: 2,
-      sm2IntervalDays: 6,
-      sm2EaseFactor: 2.6
+function createFreshProfile(): PlayerLearningProfile {
+  return {
+    totalDecisions: 0,
+    totalMistakes: 0,
+    averageEvLossPct: 0,
+    masteryScore: 80,
+    styleProfile: 'GTO Sólido',
+    leakCategoryCounts: {},
+    primaryLeak: {
+      title: 'Calibración Personal Iniciada',
+      description: 'Tu perfil privado está listo. A medida que decidas manos en Paso a Paso, Práctica o Evaluaciones, el motor detectará tus fugas reales automáticamente.',
+      prescriptiveFix: 'Completa una evaluación por niveles o juega 5 manos en Práctica para recibir tu primera guía GTO personalizada.',
+      impact: 'Media'
     },
-    {
-      id: 'hh-seed-2',
-      timestamp: Date.now() - 3600000 * 5,
-      heroPos: 'BB',
-      villainPos: 'BTN',
-      heroCards: 'Ad 5d',
-      board: 'Ah 8s 3c',
-      street: 'flop',
-      category: 'Botes 3-Bet',
-      potBB: 19.5,
-      chosenAction: 'Bet 75% Pot',
-      optimalAction: 'Bet 25% - 33% Pot',
-      evLossPct: 6.8,
-      isMistake: true,
-      keyTakeaway: 'En botes 3-Bet el SPR es bajo; apostar grande aísla tu mano contra monstruos.',
-      sm2Repetitions: 0,
-      sm2IntervalDays: 1,
-      sm2EaseFactor: 2.3
-    }
-  ],
-  sm2TotalCards: 3,
-  sm2DueCardsCount: 3
-};
+    liveTipForCurrentSpot: 'Tu perfil está limpio: cada mano que practiques calibrará tus recomendaciones en tiempo real.',
+    history: [],
+    collectedHands: [],
+    sm2TotalCards: 0,
+    sm2DueCardsCount: 0
+  };
+}
 
 /**
  * Función matemática SM-2 pura
@@ -192,28 +150,64 @@ export class AutoLearningEngine {
     return AutoLearningEngine.instance;
   }
 
+  public reloadForActiveUser(): void {
+    this.profile = this.loadProfile();
+    this.updateSM2Counts();
+  }
+
+  public hydrateSummaryFromCloud(summary: {
+    totalDecisions?: number;
+    totalMistakes?: number;
+    masteryScore?: number;
+  }): void {
+    let updated = false;
+    if (typeof summary.totalDecisions === 'number' && summary.totalDecisions > this.profile.totalDecisions) {
+      this.profile.totalDecisions = summary.totalDecisions;
+      updated = true;
+    }
+    if (typeof summary.totalMistakes === 'number' && summary.totalMistakes > this.profile.totalMistakes) {
+      this.profile.totalMistakes = summary.totalMistakes;
+      updated = true;
+    }
+    if (
+      typeof summary.masteryScore === 'number' &&
+      this.profile.totalDecisions > 0 &&
+      summary.masteryScore >= 0 &&
+      summary.masteryScore <= 100
+    ) {
+      this.profile.masteryScore = summary.masteryScore;
+      updated = true;
+    }
+    if (updated) {
+      this.saveProfile(false);
+    }
+  }
+
   private loadProfile(): PlayerLearningProfile {
+    const base = createFreshProfile();
     try {
-      const data = localStorage.getItem(STORAGE_KEY);
+      const data = readScopedItem(STORAGE_KEY);
       if (data) {
         const parsed = JSON.parse(data);
         return {
-          ...DEFAULT_PROFILE,
+          ...base,
           ...parsed,
-          collectedHands: parsed.collectedHands || DEFAULT_PROFILE.collectedHands,
-          leakCategoryCounts: parsed.leakCategoryCounts || DEFAULT_PROFILE.leakCategoryCounts
+          collectedHands: Array.isArray(parsed.collectedHands) ? parsed.collectedHands : [],
+          leakCategoryCounts: parsed.leakCategoryCounts || {}
         };
       }
     } catch (e) {
       // fallback
     }
-    return DEFAULT_PROFILE;
+    return base;
   }
 
-  private saveProfile(): void {
+  private saveProfile(emitEvent = true): void {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.profile));
-      window.dispatchEvent(new Event('storage'));
+      writeScopedItem(STORAGE_KEY, JSON.stringify(this.profile));
+      if (emitEvent && typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('storage'));
+      }
     } catch (e) {
       // ignore
     }
@@ -225,11 +219,11 @@ export class AutoLearningEngine {
   }
 
   /**
-   * Actualiza el conteo de tarjetas SM-2 sincronizadas en localStorage
+   * Actualiza el conteo de tarjetas SM-2 sincronizadas en scoped storage
    */
   public updateSM2Counts(): void {
     try {
-      const raw = localStorage.getItem(SM2_STORAGE_KEY);
+      const raw = readScopedItem(SM2_STORAGE_KEY);
       if (raw) {
         const cards = JSON.parse(raw);
         if (Array.isArray(cards)) {
@@ -237,8 +231,12 @@ export class AutoLearningEngine {
           this.profile.sm2DueCardsCount = cards.filter(
             (c: { nextReviewDate?: number }) => (c.nextReviewDate || 0) <= Date.now()
           ).length;
+          return;
         }
       }
+      const sm2Stats = SpacedRepetitionManager.getInstance().getStats();
+      this.profile.sm2TotalCards = sm2Stats.totalItems;
+      this.profile.sm2DueCardsCount = sm2Stats.dueTodayCount;
     } catch (e) {}
   }
 
@@ -279,17 +277,19 @@ export class AutoLearningEngine {
       style = 'Ligeramente Desbalanceado';
     }
 
-    // Find highest leak category
-    let maxLeakCat = 'Botes 3-Bet';
-    let maxCount = -1;
-    for (const [cat, cnt] of Object.entries(newLeakCounts)) {
-      if (cnt > maxCount) {
-        maxCount = cnt;
-        maxLeakCat = cat;
+    const hasRecordedLeaks = Object.keys(newLeakCounts).length > 0;
+    let maxLeakCat = 'Sin Fugas Detectadas';
+    let primaryLeak = createFreshProfile().primaryLeak;
+    if (hasRecordedLeaks) {
+      let maxCount = -1;
+      for (const [cat, cnt] of Object.entries(newLeakCounts)) {
+        if (cnt > maxCount) {
+          maxCount = cnt;
+          maxLeakCat = cat;
+        }
       }
+      primaryLeak = this.getLeakDetails(maxLeakCat);
     }
-
-    const primaryLeak = this.getLeakDetails(maxLeakCat);
 
     this.profile = {
       ...this.profile,
@@ -300,7 +300,9 @@ export class AutoLearningEngine {
       styleProfile: style,
       leakCategoryCounts: newLeakCounts,
       primaryLeak,
-      liveTipForCurrentSpot: `Auto-Learning: Detectada vulnerabilidad en ${maxLeakCat}. ${primaryLeak.prescriptiveFix}`,
+      liveTipForCurrentSpot: hasRecordedLeaks
+        ? `Auto-Learning: Detectada vulnerabilidad en ${maxLeakCat}. ${primaryLeak.prescriptiveFix}`
+        : `Ejecución sólida (${newTotalDecisions} decisiones sin fugas >5% EV). Mantén tu equilibrio por calle.`,
       history: newHistory
     };
 
@@ -368,7 +370,7 @@ export class AutoLearningEngine {
    */
   private autoSyncToSM2Flashcard(hand: HandHistoryRecord): string {
     try {
-      const raw = localStorage.getItem(SM2_STORAGE_KEY);
+      const raw = readScopedItem(SM2_STORAGE_KEY);
       const cards = raw ? JSON.parse(raw) : [];
 
       const cardId = `fc-auto-${Date.now()}`;
@@ -390,7 +392,7 @@ export class AutoLearningEngine {
 
       // Si ya existía una parecida, la ponemos al frente con review pendiente
       const filtered = cards.filter((c: { question?: string }) => c.question !== newCard.question);
-      localStorage.setItem(SM2_STORAGE_KEY, JSON.stringify([newCard, ...filtered]));
+      writeScopedItem(SM2_STORAGE_KEY, JSON.stringify([newCard, ...filtered]));
       return cardId;
     } catch (e) {
       return `fc-fallback-${Date.now()}`;
@@ -437,11 +439,7 @@ export class AutoLearningEngine {
   }
 
   public resetStats(): void {
-    this.profile = {
-      ...DEFAULT_PROFILE,
-      history: [],
-      collectedHands: []
-    };
+    this.profile = createFreshProfile();
     this.saveProfile();
   }
 }

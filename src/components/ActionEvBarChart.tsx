@@ -20,6 +20,7 @@ interface ActionEvBarChartProps {
   heroHand: ConcreteHandWithWeight | null;
   chosenActionType?: string | null;
   potSize: number;
+  bbUnit?: number;
 }
 
 export interface ActionEvItem {
@@ -43,7 +44,8 @@ export const ActionEvBarChart: React.FC<ActionEvBarChartProps> = ({
   strategyResult,
   heroHand,
   chosenActionType,
-  potSize
+  potSize,
+  bbUnit = 2
 }) => {
   const [viewMode, setViewMode] = useState<'combo' | 'range'>('combo');
 
@@ -96,8 +98,8 @@ export const ActionEvBarChart: React.FC<ActionEvBarChartProps> = ({
       freq = 1 / actions.length;
     }
 
-    // 2 chips per Big Blind (assuming 100 chips = 50BB)
-    const evBB = Math.round((evChips / 2) * 100) / 100;
+    const safeBb = bbUnit > 0 ? bbUnit : 2;
+    const evBB = Math.round((evChips / safeBb) * 100) / 100;
     const isChosen = chosenActionType === actKey || chosenActionType === act.type;
 
     return {
@@ -171,8 +173,8 @@ export const ActionEvBarChart: React.FC<ActionEvBarChartProps> = ({
               <h3 className="text-xs font-bold uppercase tracking-wider text-white">
                 Gráfico de EV por Acción vs Estrategia Ideal
               </h3>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-neutral-800 text-neutral-300 font-mono">
-                Valor Esperado (EV)
+              <span className="text-[10px] text-neutral-400 font-mono">
+                · Valor Esperado (EV)
               </span>
             </div>
             <p className="text-[11px] text-neutral-400 mt-0.5">
@@ -269,7 +271,7 @@ export const ActionEvBarChart: React.FC<ActionEvBarChartProps> = ({
                   )}
 
                   {isChosen && (
-                    <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 animate-pulse">
+                    <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
                       <CheckCircle2 className="w-3 h-3 text-cyan-400" />
                       Tu Decisión
                     </span>

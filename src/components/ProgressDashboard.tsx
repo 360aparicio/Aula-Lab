@@ -12,6 +12,7 @@ import * as d3 from 'd3';
 import { LearnerService, LEARNER_UPDATE_EVENT } from '../engine/learner';
 import { SpacedRepetitionManager, SM2_UPDATE_EVENT } from '../engine/spacedRepetition';
 import { AutoLearningEngine } from '../engine/autoLearningEngine';
+import { readScopedItem } from '../lib/userStorage';
 import {
   BarChart3,
   Printer,
@@ -51,37 +52,24 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 function readCategoryStats(): CategoryStatMap {
   try {
-    const saved = localStorage.getItem('gto_academy_stats');
+    const saved = readScopedItem('gto_academy_stats');
     if (saved) return JSON.parse(saved);
   } catch {
     // ignore
   }
-  return {
-    dry_flop: { attempts: 12, correct: 10 },
-    wet_flop: { attempts: 10, correct: 7 },
-    monotone_flop: { attempts: 8, correct: 5 },
-    paired_flop: { attempts: 14, correct: 12 },
-    three_bet_pot: { attempts: 9, correct: 6 },
-    squeeze: { attempts: 7, correct: 5 },
-    rol: { attempts: 11, correct: 10 },
-    open_raise: { attempts: 15, correct: 14 },
-    four_bet: { attempts: 8, correct: 6 },
-    limp_reraise: { attempts: 6, correct: 5 },
-    blind_defense: { attempts: 12, correct: 10 },
-    bluff_catch: { attempts: 9, correct: 7 }
-  };
+  return {};
 }
 
 function readRoadmapPhases(): RoadmapPhaseSummary[] {
   const defaultPhases: RoadmapPhaseSummary[] = [
-    { id: 1, name: 'Fase 1: Bankroll', doneCount: 2, totalCount: 4, pct: 50 },
-    { id: 2, name: 'Fase 2: Juego Mental', doneCount: 1, totalCount: 4, pct: 25 },
-    { id: 3, name: 'Fase 3: Técnica GTO', doneCount: 1, totalCount: 4, pct: 25 },
+    { id: 1, name: 'Fase 1: Bankroll', doneCount: 0, totalCount: 4, pct: 0 },
+    { id: 2, name: 'Fase 2: Juego Mental', doneCount: 0, totalCount: 4, pct: 0 },
+    { id: 3, name: 'Fase 3: Técnica GTO', doneCount: 0, totalCount: 4, pct: 0 },
     { id: 4, name: 'Fase 4: Datos NL100', doneCount: 0, totalCount: 4, pct: 0 }
   ];
 
   try {
-    const raw = localStorage.getItem('gto_career_roadmap');
+    const raw = readScopedItem('gto_career_roadmap');
     if (!raw) return defaultPhases;
     const parsed = JSON.parse(raw) as Array<{
       id: number;
@@ -139,24 +127,24 @@ export const ProgressDashboard: React.FC = () => {
   }, []);
 
   const radarAxes = useMemo(() => {
-    const pctOf = (key: string, fallback: number) => {
+    const pctOf = (key: string) => {
       const s = catStats[key];
-      if (!s || s.attempts === 0) return fallback;
+      if (!s || s.attempts === 0) return 0;
       return Math.round((s.correct / s.attempts) * 100);
     };
     return [
-      { axis: 'RFI Preflop', hero: pctOf('open_raise', 88), gto: 95 },
-      { axis: 'C-Bet Secos', hero: pctOf('dry_flop', 82), gto: 92 },
-      { axis: 'Boards Mojados', hero: pctOf('wet_flop', 70), gto: 88 },
-      { axis: 'Botes 3-Bet', hero: pctOf('three_bet_pot', 67), gto: 90 },
-      { axis: 'Defensa Ciegas', hero: pctOf('blind_defense', 80), gto: 90 },
-      { axis: 'River Bluff Catch', hero: pctOf('bluff_catch', 75), gto: 87 }
+      { axis: 'RFI Preflop', hero: pctOf('open_raise'), gto: 95 },
+      { axis: 'C-Bet Secos', hero: pctOf('dry_flop'), gto: 92 },
+      { axis: 'Boards Mojados', hero: pctOf('wet_flop'), gto: 88 },
+      { axis: 'Botes 3-Bet', hero: pctOf('three_bet_pot'), gto: 90 },
+      { axis: 'Defensa Ciegas', hero: pctOf('blind_defense'), gto: 90 },
+      { axis: 'River Bluff Catch', hero: pctOf('bluff_catch'), gto: 87 }
     ];
   }, [catStats]);
 
   const categoryComparisonData = useMemo(() => {
     return Object.entries(CATEGORY_LABELS).map(([key, label]) => {
-      const s = catStats[key] || { attempts: 1, correct: 0 };
+      const s = catStats[key] || { attempts: 0, correct: 0 };
       const heroPct = s.attempts > 0 ? Math.round((s.correct / s.attempts) * 100) : 0;
       const gtoTarget = key === 'open_raise' || key === 'dry_flop' ? 92 : 85;
       return { key, label, heroPct, gtoTarget };

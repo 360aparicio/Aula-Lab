@@ -9,6 +9,7 @@
 
 import { Card, cardId, type Rank, type Suit } from './cards';
 import type { AcademyCategory, QuizScenario } from './academySpots';
+import { readScopedItem, writeScopedItem } from '../lib/userStorage';
 
 export type EvaluationMode = 'fixed' | 'levels' | 'variable';
 export type DifficultyLevel = 1 | 2 | 3 | 4;
@@ -984,12 +985,13 @@ export function getBankCountsByMode(): { fixed: number; levels: number; variable
 }
 
 const SEEN_STORAGE_KEY = 'lab_studio_eval_seen_v2';
+const LAST_BATCH_STORAGE_KEY = 'lab_studio_eval_last_batch_v2';
 
 type SeenStore = Record<EvaluationMode, string[]>;
 
 export function loadSeenQuestionIds(): SeenStore {
   try {
-    const raw = localStorage.getItem(SEEN_STORAGE_KEY);
+    const raw = readScopedItem(SEEN_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<SeenStore>;
       return {
@@ -1009,18 +1011,32 @@ export function markQuestionIdsSeen(mode: EvaluationMode, ids: string[]): SeenSt
   const merged = Array.from(new Set([...store[mode], ...ids]));
   const next: SeenStore = { ...store, [mode]: merged };
   try {
-    localStorage.setItem(SEEN_STORAGE_KEY, JSON.stringify(next));
+    writeScopedItem(SEEN_STORAGE_KEY, JSON.stringify(next));
+    writeScopedItem(
+      LAST_BATCH_STORAGE_KEY,
+      JSON.stringify({ ...loadLastBatchIds(), [mode]: ids })
+    );
   } catch {
     // ignore
   }
   return next;
 }
 
+function loadLastBatchIds(): Partial<Record<EvaluationMode, string[]>> {
+  try {
+    const raw = readScopedItem(LAST_BATCH_STORAGE_KEY);
+    if (raw) return JSON.parse(raw) as Partial<Record<EvaluationMode, string[]>>;
+  } catch {
+    // ignore
+  }
+  return {};
+}
+
 export function resetSeenQuestionIds(mode: EvaluationMode): SeenStore {
   const store = loadSeenQuestionIds();
   const next: SeenStore = { ...store, [mode]: [] };
   try {
-    localStorage.setItem(SEEN_STORAGE_KEY, JSON.stringify(next));
+    writeScopedItem(SEEN_STORAGE_KEY, JSON.stringify(next));
   } catch {
     // ignore
   }
@@ -1038,7 +1054,7 @@ function shuffle<T>(arr: T[]): T[] {
 
 /**
  * Construye una evaluación garantizando preguntas SIN REPETICIÓN respecto a sesiones anteriores.
- * Prioriza preguntas del modo elegido que el jugador NO ha visto aún.
+ * Prioriza preguntas del modo elegido que el jugador NO ha visto aún, y evita repetir el último lote al reiniciar ciclo.
  */
 export function generateNonRepeatingExam(
   mode: EvaluationMode,
@@ -1054,7 +1070,6 @@ export function generateNonRepeatingExam(
 
   if (mode === 'levels') {
     const levelFiltered = pool.filter(q => q.level === userLevel);
-    // Keep all 216+ questions accessible while emphasizing the user's current level first
     const otherLevelQuestions = MASTER_EVALUATION_BANK.filter(q => q.level === userLevel && q.mode !== mode);
     pool = [...levelFiltered, ...otherLevelQuestions];
   } else if (mode === 'variable') {
@@ -1072,7 +1087,6 @@ export function generateNonRepeatingExam(
       return true;
     });
     if (customFiltered.length < filters.questionCount) {
-      // Relax mode restriction first, keep filters if possible, then expand safely
       const broad = pool.length >= filters.questionCount ? pool : MASTER_EVALUATION_BANK;
       const missingIds = new Set(customFiltered.map(x => x.id));
       customFiltered = [...customFiltered, ...broad.filter(x => !missingIds.has(x.id))];
@@ -1083,14 +1097,15 @@ export function generateNonRepeatingExam(
   const count = mode === 'fixed' ? filters.questionCount : mode === 'levels' ? 8 : filters.questionCount;
   const seenStore = loadSeenQuestionIds();
   const seenSet = new Set(seenStore[mode]);
+  const lastBatchSet = new Set(loadLastBatchIds()[mode] || []);
 
   let unseen = pool.filter(q => !seenSet.has(q.id));
   let cycleResetOccurred = false;
 
   if (unseen.length < count) {
-    // Only reset this mode's seen history once exhausted
     resetSeenQuestionIds(mode);
-    unseen = pool;
+    const nonRecent = pool.filter(q => !lastBatchSet.has(q.id));
+    unseen = nonRecent.length >= count ? nonRecent : pool;
     cycleResetOccurred = true;
   }
 

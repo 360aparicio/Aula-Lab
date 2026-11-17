@@ -1,45 +1,38 @@
-# GTO Studio — No-Limit Texas Hold'em GTO Solver & Trainer
+# Lab Studio V3.6 Dual-Repo Pro — Aula Educativo & Consola Admin Independiente
 
-**GTO Studio** is a professional Game Theory Optimal (GTO) poker solver, interactive decision tree explorer, 13×13 range matrix editor, and practice trainer.
+Plataforma profesional de **No-Limit Texas Hold'em 6-Max (GTO & Explotativo)** dividida en **2 repositorios independientes pero conectados en tiempo real vía Firebase Auth + Firestore compartido**:
 
-## Key Features
+## Arquitectura de 2 Repositorios Enlazados
 
-- **Discounted CFR (DCFR) & CFR+ Engine**:
-  - Exact parameters: $\alpha = 1.5, \beta = 0.0, \gamma = 2.0$.
-  - Regret matching+ with reach-weighted strategy accumulation.
-  - Zero-sum payoff validation and convergence verification.
-- **Exact 7-Card Hand Evaluator**:
-  - Evaluates all standard poker categories with monotonic scoring for tie-breaking and split pots.
-- **13×13 Interactive Range Matrix**:
-  - Pocket pairs, suited hands, offsuit hands.
-  - Multi-brush weight painter (100%, 75%, 50%, 25%, 0%).
-  - Real-time dead card blocker calculation and impossible combo elimination.
-  - Standard notation parser and serializer (e.g., `AA-TT,AKs-ATs,AKo:0.5`).
-- **Interactive Decision Tree**:
-  - Check, Bet (% of pot), Call, Fold, Raise, All-In.
-  - Action frequency breakdown per node.
-- **13×13 Strategy Heatmap**:
-  - Displays multi-action distribution bars (Fold in red, Check/Call in blue, Bet/Raise in green) across all hands for any selected tree node.
-- **GTO Trainer Arena**:
-  - Hole cards dealt from Hero's range with board blocker removal.
-  - Real-time feedback with GTO strategy comparison, EV loss, and Elo rating adjustment.
-- **Offline Persistence**:
-  - Save, load, export, and import scenario files in JSON format.
-- **Automated Test Suite**:
-  - 332 unit tests verifying evaluator, range metrics, blockers, decision tree transitions, Kuhn Poker analytical Nash convergence, and DCFR normalization.
+| Repositorio | Ubicación | Propósito | URL / Puerto |
+| :--- | :--- | :--- | :--- |
+| **`lab-studio-edu`** | Raíz `/` | Aula Educativa & Laboratorio GTO (Paso a Paso, Práctica Multi-Calle, Manual 6-Max, Evaluaciones 720+, SM-2, Dashboard D3.js y Plan de Carrera Gemini AI) | `http://localhost:3000` (`/`) |
+| **`lab-studio-admin`** | `/admin-console/` | Consola Administrativa SaaS Independiente (Usuarios, Pre-registro `/userInvites`, **Planes / Secciones / Beneficios en vivo `/planConfigs`**, Analítica D3.js de Crecimiento/Retención/BD y Auditoría) | `/admin/` o standalone `http://localhost:4000` |
 
-## Quick Start
+## Sincronización en Vivo entre Repositorios (`/planConfigs/{free|pro|elite}`)
+- En `lab-studio-admin`, pestaña **Planes, Secciones & Beneficios**, el administrador configura qué módulos de las **9 secciones** del Aula ve cada plan, si las pestañas bloqueadas se muestran con candado o se ocultan (`hideLockedSections`), el límite diario de evaluaciones y los beneficios comerciales.
+- En `lab-studio-edu`, cada estudiante conectado recibe los cambios al instante mediante Firestore `onSnapshot` (`AuthContext.tsx`), adaptando el menú superior (`Header.tsx`), las cuotas (`EvaluationModule.tsx`) y su modal de beneficios (`PlanBenefitsModal.tsx`).
+
+## Comandos Rápidos
 
 ```bash
-# Run automated test suite (332 tests)
+# 1. Instalar dependencias del Repo Educativo y del Repo Admin
+npm install
+npm --prefix admin-console install
+
+# 2. Compilar ambos repositorios
+npm run build:all
+
+# 3. Verificar TypeScript y Pruebas Matemáticas (334+ tests)
+npm run lint:all
 npm test
 
-# Run development server
+# 4. Iniciar servidor unificado (Aula en / y Admin compilado en /admin/)
 npm run dev
 
-# Run TypeScript linter
-npm run lint
+# 5. (Opcional) Iniciar Consola Admin de forma autónoma en puerto 4000
+npm run dev:admin
 
-# Compile for production
-npm run build
+# 6. Exportar a 2 repositorios Git separados listos para GitHub
+bash scripts/split-repos.sh
 ```

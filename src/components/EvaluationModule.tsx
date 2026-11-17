@@ -22,6 +22,8 @@ import {
 import { Card, SUIT_COLORS, SUIT_SYMBOLS } from '../engine/cards';
 import { AutoLearningEngine } from '../engine/autoLearningEngine';
 import { SolverMetaUpdater } from '../engine/solverMetaUpdater';
+import { useAuth } from '../context/AuthContext';
+import { readScopedItem, writeScopedItem } from '../lib/userStorage';
 import {
   ClipboardCheck,
   SlidersHorizontal,
@@ -42,6 +44,39 @@ import {
   Layers
 } from 'lucide-react';
 
+export interface LiveChallengeCloudSummary {
+  active: boolean;
+  completedHands: number;
+  targetHands: number;
+  updatedAt: number;
+  records: Array<{
+    id: string;
+    handNumber: number;
+    heroPos: string;
+    scenario: string;
+    street: string;
+    chosenAction: string;
+    bestAction: string;
+    isOptimal: boolean;
+    isBlunder: boolean;
+    evLossBB: number;
+    evLossPctPot: number;
+    timestamp: number;
+  }>;
+}
+
+export interface PT4CloudSummary {
+  totalDatabases: number;
+  activeDbName: string;
+  totalHands: number;
+  netWonBB: number;
+  evAdjustedBB: number;
+  vpip: number;
+  pfr: number;
+  threeBet: number;
+  updatedAt: number;
+}
+
 export interface SavedEvaluationSummary {
   lastMode: string;
   lastScorePct: number;
@@ -55,13 +90,15 @@ export interface SavedEvaluationSummary {
   strongestCategory: string;
   categoryPerf: Record<string, { attempts: number; correct: number }>;
   lastUpdatedAt: number;
+  liveChallengeSummary?: LiveChallengeCloudSummary;
+  pt4Summary?: PT4CloudSummary;
 }
 
 export const EVAL_STATS_STORAGE_KEY = 'lab_studio_eval_stats';
 
 export function loadEvaluationStats(): SavedEvaluationSummary {
   try {
-    const raw = localStorage.getItem(EVAL_STATS_STORAGE_KEY);
+    const raw = readScopedItem(EVAL_STATS_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<SavedEvaluationSummary>;
       return {
@@ -76,7 +113,9 @@ export function loadEvaluationStats(): SavedEvaluationSummary {
         weakestCategory: typeof parsed.weakestCategory === 'string' ? parsed.weakestCategory : 'Sin datos aún',
         strongestCategory: typeof parsed.strongestCategory === 'string' ? parsed.strongestCategory : 'Sin datos aún',
         categoryPerf: parsed.categoryPerf && typeof parsed.categoryPerf === 'object' ? parsed.categoryPerf : {},
-        lastUpdatedAt: typeof parsed.lastUpdatedAt === 'number' ? parsed.lastUpdatedAt : Date.now()
+        lastUpdatedAt: typeof parsed.lastUpdatedAt === 'number' ? parsed.lastUpdatedAt : Date.now(),
+        ...(parsed.liveChallengeSummary ? { liveChallengeSummary: parsed.liveChallengeSummary } : {}),
+        ...(parsed.pt4Summary ? { pt4Summary: parsed.pt4Summary } : {})
       };
     }
   } catch {
@@ -98,6 +137,20 @@ export function loadEvaluationStats(): SavedEvaluationSummary {
   };
 }
 
+export function saveEvaluationStats(stats: SavedEvaluationSummary): void {
+  try {
+    const prev = loadEvaluationStats();
+    const merged: SavedEvaluationSummary = {
+      ...stats,
+      liveChallengeSummary: stats.liveChallengeSummary ?? prev.liveChallengeSummary,
+      pt4Summary: stats.pt4Summary ?? prev.pt4Summary
+    };
+    writeScopedItem(EVAL_STATS_STORAGE_KEY, JSON.stringify(merged));
+  } catch {
+    // ignore
+  }
+}
+
 interface AnswerRecord {
   question: EvaluationQuestion;
   chosenIdx: number;
@@ -117,10 +170,43 @@ const CardChip: React.FC<{ card: Card; size?: 'sm' | 'md' }> = ({ card, size = '
   );
 };
 
+export const EVAL_DAILY_QUOTA_KEY = 'lab_studio_eval_daily_v1';
+
+function getTodayDateKey(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function loadTodayEvalCount(): number {
+  try {
+    const raw = readScopedItem(EVAL_DAILY_QUOTA_KEY);
+    if (!raw) return 0;
+    const parsed = JSON.parse(raw) as { date?: string; count?: number };
+    if (parsed.date === getTodayDateKey() && typeof parsed.count === 'number') {
+      return Math.max(0, parsed.count);
+    }
+  } catch {
+    // ignore
+  }
+  return 0;
+}
+
+function incrementTodayEvalCount(): number {
+  const next = loadTodayEvalCount() + 1;
+  try {
+    writeScopedItem(EVAL_DAILY_QUOTA_KEY, JSON.stringify({ date: getTodayDateKey(), count: next }));
+  } catch {
+    // ignore
+  }
+  return next;
+}
+
 export const EvaluationModule: React.FC = () => {
+  const { isAdmin, activePlanConfig, planPermissions } = useAuth();
   const bankCounts = useMemo(() => getBankCountsByMode(), []);
   const [evalStats, setEvalStats] = useState<SavedEvaluationSummary>(() => loadEvaluationStats());
   const [seenStore, setSeenStore] = useState(() => loadSeenQuestionIds());
+  const [todayEvalCount, setTodayEvalCount] = useState<number>(() => loadTodayEvalCount());
+  const [quotaError, setQuotaError] = useState<string | null>(null);
 
   const [evalMode, setEvalMode] = useState<EvaluationMode>('levels');
   const [selectedLevel, setSelectedLevel] = useState<DifficultyLevel>(() => loadEvaluationStats().currentLevel);
@@ -165,7 +251,20 @@ export const EvaluationModule: React.FC = () => {
     };
   }, [evalStats]);
 
+  const dailyLimit = !isAdmin && !planPermissions.unlimitedEval && activePlanConfig.maxDailyEvaluations > 0
+    ? activePlanConfig.maxDailyEvaluations
+    : 0;
+
+  const isDailyQuotaReached = dailyLimit > 0 && todayEvalCount >= dailyLimit;
+
   const startExam = (overrideMode?: EvaluationMode, overrideLevel?: DifficultyLevel) => {
+    if (dailyLimit > 0 && todayEvalCount >= dailyLimit) {
+      setQuotaError(
+        `Has alcanzado tu cupo de ${dailyLimit} evaluaciones diarias en ${activePlanConfig.displayName}. El Administrador puede ampliar este límite en tu plan.`
+      );
+      return;
+    }
+    setQuotaError(null);
     const modeToUse = overrideMode ?? evalMode;
     const levelToUse = overrideLevel ?? selectedLevel;
     const result = generateNonRepeatingExam(modeToUse, levelToUse, filters);
@@ -173,6 +272,7 @@ export const EvaluationModule: React.FC = () => {
       modeToUse,
       result.questions.map(q => q.id)
     );
+    setTodayEvalCount(incrementTodayEvalCount());
     setSeenStore(updatedSeen);
     setExamQuestions(result.questions);
     setCurrentIdx(0);
@@ -324,8 +424,8 @@ export const EvaluationModule: React.FC = () => {
     };
 
     setEvalStats(updatedStats);
+    saveEvaluationStats(updatedStats);
     try {
-      localStorage.setItem(EVAL_STATS_STORAGE_KEY, JSON.stringify(updatedStats));
       window.dispatchEvent(new Event('storage'));
     } catch {
       // ignore
@@ -432,6 +532,24 @@ export const EvaluationModule: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {(dailyLimit > 0 || quotaError) && (
+          <div
+            className={`p-3 rounded-xl border text-xs flex flex-wrap items-center justify-between gap-2 ${
+              isDailyQuotaReached || quotaError
+                ? 'bg-rose-950/40 border-rose-700/60 text-rose-200'
+                : 'bg-neutral-900 border-neutral-800 text-neutral-300'
+            }`}
+          >
+            <span>
+              {quotaError ||
+                `Evaluaciones hoy en ${activePlanConfig.displayName}: ${todayEvalCount} / ${dailyLimit} disponibles.`}
+            </span>
+            <span className="font-mono text-[11px] text-blue-300">
+              {isDailyQuotaReached ? 'Límite diario alcanzado' : `${Math.max(0, dailyLimit - todayEvalCount)} restantes hoy`}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Mode Configurator & 4-Level Ladder (visible when not taking an active exam) */}

@@ -25,32 +25,42 @@ import { auth, db, handleFirestoreError, OperationType } from './firebase';
 import { SpacedRepetitionManager, type SM2Item } from '../engine/spacedRepetition';
 import { LearnerService, type LearnerMistakeRecord } from '../engine/learner';
 import { AutoLearningEngine } from '../engine/autoLearningEngine';
+import { loadTrainerStats, saveTrainerStats } from '../trainer/trainerState';
+import { readScopedItem, writeScopedItem } from './userStorage';
+import {
+  ACADEMY_STATS_STORAGE_KEY,
+  CAREER_ROADMAP_STORAGE_KEY,
+  INITIAL_ROADMAP,
+  type RoadmapPhase
+} from '../components/AcademyRoadmapDashboard';
 import {
   EVAL_STATS_STORAGE_KEY,
+  loadEvaluationStats,
+  saveEvaluationStats,
+  type LiveChallengeCloudSummary,
+  type PT4CloudSummary,
   type SavedEvaluationSummary
 } from '../components/EvaluationModule';
 import type { DifficultyLevel } from '../engine/evaluationBank';
+import {
+  loadLiveChallengeState,
+  saveLiveChallengeState,
+  type LiveDecisionRecord
+} from '../engine/handSimulator';
+import { computeHudStats, getActiveTracker2DatabaseId, loadTracker2Databases } from '../engine/theTracker2Engine';
+
+import {
+  DEFAULT_PLAN_CONFIGS,
+  getDefaultPlanPermissions,
+  mergePlanConfig,
+  type PlanConfigDoc,
+  type PlanPermissions,
+  type PlanTier
+} from './planCatalog';
 
 export type UserRole = 'user' | 'admin';
-export type PlanTier = 'free' | 'pro' | 'elite';
-
-export interface PlanPermissions {
-  labPro: boolean;
-  webBrain: boolean;
-  unlimitedEval: boolean;
-  pdfExport: boolean;
-  planAdmin: boolean;
-}
-
-export function getDefaultPlanPermissions(tier: PlanTier, isRoleAdmin = false): PlanPermissions {
-  if (tier === 'elite') {
-    return { labPro: true, webBrain: true, unlimitedEval: true, pdfExport: true, planAdmin: isRoleAdmin };
-  }
-  if (tier === 'pro') {
-    return { labPro: true, webBrain: true, unlimitedEval: true, pdfExport: false, planAdmin: isRoleAdmin };
-  }
-  return { labPro: true, webBrain: false, unlimitedEval: false, pdfExport: false, planAdmin: isRoleAdmin };
-}
+export type { PlanTier, PlanPermissions, PlanConfigDoc };
+export { getDefaultPlanPermissions, DEFAULT_PLAN_CONFIGS, mergePlanConfig };
 
 export const BOOTSTRAPPED_ADMIN_EMAIL = '360aparicio@gmail.com';
 
@@ -132,7 +142,7 @@ function sanitizeDocId(rawId: string): string {
 
 export function getRoadmapDoneIdsFromLocal(): string[] {
   try {
-    const raw = localStorage.getItem('gto_career_roadmap');
+    const raw = readScopedItem(CAREER_ROADMAP_STORAGE_KEY);
     if (!raw) return [];
     const phases = JSON.parse(raw) as Array<{ milestones?: Array<{ id: string; done: boolean }> }>;
     const doneIds: string[] = [];
@@ -151,7 +161,7 @@ export function getRoadmapDoneIdsFromLocal(): string[] {
 
 export function getCategoryStatsFromLocal(): Record<string, { attempts: number; correct: number }> {
   try {
-    const raw = localStorage.getItem('gto_academy_stats');
+    const raw = readScopedItem(ACADEMY_STATS_STORAGE_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     return parsed && typeof parsed === 'object' ? parsed : {};
@@ -162,10 +172,8 @@ export function getCategoryStatsFromLocal(): Record<string, { attempts: number; 
 
 export function getTrainerEloFromLocal(): number {
   try {
-    const raw = localStorage.getItem('gto_trainer_stats');
-    if (!raw) return 1200;
-    const parsed = JSON.parse(raw);
-    return typeof parsed?.elo === 'number' ? Math.max(0, Math.min(5000, Math.round(parsed.elo))) : 1200;
+    const stats = loadTrainerStats();
+    return typeof stats?.elo === 'number' ? Math.max(0, Math.min(5000, Math.round(stats.elo))) : 1200;
   } catch {
     return 1200;
   }
@@ -188,10 +196,64 @@ function defaultEvaluationStats(): SavedEvaluationSummary {
   };
 }
 
+function buildCompactLiveChallengeSummary(): LiveChallengeCloudSummary | undefined {
+  try {
+    const state = loadLiveChallengeState();
+    if (!state.active && state.completedHands === 0 && state.records.length === 0) return undefined;
+    return {
+      active: Boolean(state.active),
+      completedHands: Math.max(0, Math.round(state.completedHands)),
+      targetHands: Math.max(10, Math.round(state.targetHands || 100)),
+      updatedAt: state.updatedAt || Date.now(),
+      records: state.records.slice(-40).map(r => ({
+        id: clampString(r.id, 64, `rec-${Date.now()}`),
+        handNumber: Math.max(1, Math.round(r.handNumber)),
+        heroPos: clampString(r.heroPos, 12, 'BTN'),
+        scenario: clampString(r.scenario, 24, 'SRP_IP'),
+        street: clampString(r.street, 16, 'flop'),
+        chosenAction: clampString(r.chosenAction, 48, 'Call'),
+        bestAction: clampString(r.bestAction, 48, 'Check'),
+        isOptimal: Boolean(r.isOptimal),
+        isBlunder: Boolean(r.isBlunder),
+        evLossBB: Number(r.evLossBB || 0),
+        evLossPctPot: Number(r.evLossPctPot || 0),
+        timestamp: Number(r.timestamp || Date.now())
+      }))
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function buildCompactPT4Summary(): PT4CloudSummary | undefined {
+  try {
+    const dbs = loadTracker2Databases();
+    const activeId = getActiveTracker2DatabaseId();
+    const activeDb = dbs.find(d => d.id === activeId) || dbs[0];
+    if (!activeDb || activeDb.hands.length === 0) return undefined;
+    const stats = computeHudStats(activeDb.hands);
+    return {
+      totalDatabases: dbs.length,
+      activeDbName: clampString(activeDb.name, 48, 'Base Principal'),
+      totalHands: stats.hands,
+      netWonBB: stats.netWonBB,
+      evAdjustedBB: stats.evAdjustedBB,
+      vpip: stats.vpip,
+      pfr: stats.pfr,
+      threeBet: stats.threeBet,
+      updatedAt: activeDb.updatedAt || Date.now()
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 export function getEvaluationStatsFromLocal(): SavedEvaluationSummary {
   const fallback = defaultEvaluationStats();
+  const liveChallengeSummary = buildCompactLiveChallengeSummary();
+  const pt4Summary = buildCompactPT4Summary();
   try {
-    const raw = localStorage.getItem(EVAL_STATS_STORAGE_KEY);
+    const raw = readScopedItem(EVAL_STATS_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<SavedEvaluationSummary>;
       return {
@@ -206,13 +268,19 @@ export function getEvaluationStatsFromLocal(): SavedEvaluationSummary {
         weakestCategory: clampString(parsed.weakestCategory, 64, 'Sin datos aún'),
         strongestCategory: clampString(parsed.strongestCategory, 64, 'Sin datos aún'),
         categoryPerf: parsed.categoryPerf && typeof parsed.categoryPerf === 'object' ? parsed.categoryPerf : {},
-        lastUpdatedAt: typeof parsed.lastUpdatedAt === 'number' ? parsed.lastUpdatedAt : Date.now()
+        lastUpdatedAt: typeof parsed.lastUpdatedAt === 'number' ? parsed.lastUpdatedAt : Date.now(),
+        ...(liveChallengeSummary ? { liveChallengeSummary } : parsed.liveChallengeSummary ? { liveChallengeSummary: parsed.liveChallengeSummary } : {}),
+        ...(pt4Summary ? { pt4Summary } : parsed.pt4Summary ? { pt4Summary: parsed.pt4Summary } : {})
       };
     }
   } catch {
     // ignore
   }
-  return fallback;
+  return {
+    ...fallback,
+    ...(liveChallengeSummary ? { liveChallengeSummary } : {}),
+    ...(pt4Summary ? { pt4Summary } : {})
+  };
 }
 
 function parsePlanPermissions(raw: unknown, fallbackTier: PlanTier, role: UserRole): PlanPermissions {
@@ -229,7 +297,7 @@ function parsePlanPermissions(raw: unknown, fallbackTier: PlanTier, role: UserRo
   };
 }
 
-function mapSnapshotToUserProfile(id: string, data: Record<string, unknown>): UserProfileDoc {
+export function mapSnapshotToUserProfile(id: string, data: Record<string, unknown>): UserProfileDoc {
   const evalRaw = (data.evaluationStats && typeof data.evaluationStats === 'object'
     ? data.evaluationStats
     : {}) as Partial<SavedEvaluationSummary>;
@@ -239,7 +307,7 @@ function mapSnapshotToUserProfile(id: string, data: Record<string, unknown>): Us
   return {
     uid: typeof data.uid === 'string' ? data.uid : id,
     email: typeof data.email === 'string' ? data.email : '',
-    displayName: typeof data.displayName === 'string' ? data.displayName : 'Jugador GTO',
+    displayName: typeof data.displayName === 'string' ? data.displayName : 'Jugador Allin School',
     ...(typeof data.photoURL === 'string' ? { photoURL: data.photoURL } : {}),
     role,
     planTier,
@@ -266,10 +334,33 @@ function mapSnapshotToUserProfile(id: string, data: Record<string, unknown>): Us
       weakestCategory: typeof evalRaw.weakestCategory === 'string' ? evalRaw.weakestCategory : 'Sin datos aún',
       strongestCategory: typeof evalRaw.strongestCategory === 'string' ? evalRaw.strongestCategory : 'Sin datos aún',
       categoryPerf: evalRaw.categoryPerf && typeof evalRaw.categoryPerf === 'object' ? evalRaw.categoryPerf : {},
-      lastUpdatedAt: typeof evalRaw.lastUpdatedAt === 'number' ? evalRaw.lastUpdatedAt : Date.now()
+      lastUpdatedAt: typeof evalRaw.lastUpdatedAt === 'number' ? evalRaw.lastUpdatedAt : Date.now(),
+      ...(evalRaw.liveChallengeSummary ? { liveChallengeSummary: evalRaw.liveChallengeSummary } : {}),
+      ...(evalRaw.pt4Summary ? { pt4Summary: evalRaw.pt4Summary } : {})
     },
     createdAt: data.createdAt,
     updatedAt: data.updatedAt
+  };
+}
+
+export function buildBootstrappedAdminProfile(user: User): UserProfileDoc {
+  const email = clampString(user.email, 160, BOOTSTRAPPED_ADMIN_EMAIL).toLowerCase();
+  return {
+    uid: user.uid,
+    email,
+    displayName: clampString(user.displayName, 80, 'Administrador Principal'),
+    ...(user.photoURL ? { photoURL: clampString(user.photoURL, 512) } : {}),
+    role: 'admin',
+    planTier: 'elite',
+    planActive: true,
+    planPermissions: getDefaultPlanPermissions('elite', true),
+    elo: 1400,
+    masteryScore: 95,
+    totalDecisions: 0,
+    totalMistakes: 0,
+    roadmapDoneIds: [],
+    categoryStats: {},
+    evaluationStats: defaultEvaluationStats()
   };
 }
 
@@ -284,7 +375,7 @@ export async function syncUserProfileToCloud(user: User): Promise<UserProfileDoc
   const categoryStats = getCategoryStatsFromLocal();
   const evaluationStats = getEvaluationStatsFromLocal();
   const isBootstrappedAdmin = isBootstrappedAdminUser(user);
-  const safeEmail = clampString(user.email, 160, 'jugador@labstudio.app');
+  const safeEmail = clampString(user.email, 160, 'jugador@allinschool.app');
 
   try {
     const snap = await getDoc(userRef);
@@ -326,7 +417,7 @@ export async function syncUserProfileToCloud(user: User): Promise<UserProfileDoc
           ? pendingInvite.displayName
           : user.displayName,
         80,
-        'Jugador GTO'
+        'Jugador Allin School'
       );
 
       const newUserPayload: Record<string, unknown> = {
@@ -348,7 +439,9 @@ export async function syncUserProfileToCloud(user: User): Promise<UserProfileDoc
         updatedAt: serverTimestamp()
       };
 
-      if (pendingInvite && pendingInvite.planPermissions && typeof pendingInvite.planPermissions === 'object') {
+      if (isBootstrappedAdmin) {
+        newUserPayload.planPermissions = getDefaultPlanPermissions('elite', true);
+      } else if (pendingInvite && pendingInvite.planPermissions && typeof pendingInvite.planPermissions === 'object') {
         newUserPayload.planPermissions = parsePlanPermissions(
           pendingInvite.planPermissions,
           assignedTier,
@@ -378,16 +471,31 @@ export async function syncUserProfileToCloud(user: User): Promise<UserProfileDoc
         typeof existingData.planActive === 'boolean' &&
         typeof existingData.evaluationStats === 'object';
 
-      if (!hasV32Fields) {
+      const existingPerms = (existingData.planPermissions && typeof existingData.planPermissions === 'object'
+        ? existingData.planPermissions
+        : {}) as Record<string, unknown>;
+      const needsAdminUpgrade =
+        isBootstrappedAdmin &&
+        (existingData.role !== 'admin' ||
+          existingData.planTier !== 'elite' ||
+          existingData.planActive !== true ||
+          existingPerms.planAdmin !== true);
+
+      if (!hasV32Fields || needsAdminUpgrade) {
         await updateDoc(userRef, {
           email: typeof existingData.email === 'string' && existingData.email.length >= 3 ? existingData.email : safeEmail,
-          displayName: clampString(user.displayName, 80, 'Jugador GTO'),
+          displayName: clampString(user.displayName, 80, 'Jugador Allin School'),
           ...(user.photoURL ? { photoURL: clampString(user.photoURL, 512) } : {}),
-          role: isBootstrappedAdmin ? 'admin' : 'user',
-          planTier: isBootstrappedAdmin ? 'elite' : 'free',
-          planActive: true,
+          role: isBootstrappedAdmin ? 'admin' : existingData.role === 'admin' ? 'admin' : 'user',
+          planTier: isBootstrappedAdmin
+            ? 'elite'
+            : existingData.planTier === 'pro' || existingData.planTier === 'elite'
+            ? existingData.planTier
+            : 'free',
+          planActive: isBootstrappedAdmin ? true : typeof existingData.planActive === 'boolean' ? existingData.planActive : true,
+          ...(isBootstrappedAdmin ? { planPermissions: getDefaultPlanPermissions('elite', true) } : {}),
           elo,
-          masteryScore: Math.max(0, Math.min(100, Math.round(learningProfile.masteryScore || 80))),
+          masteryScore: Math.max(0, Math.min(100, Math.round(learningProfile.masteryScore || 0))),
           totalDecisions: Math.max(0, Math.round(learningProfile.totalDecisions || 0)),
           totalMistakes: Math.max(0, Math.round(learningProfile.totalMistakes || 0)),
           roadmapDoneIds,
@@ -397,10 +505,10 @@ export async function syncUserProfileToCloud(user: User): Promise<UserProfileDoc
         });
       } else {
         await updateDoc(userRef, {
-          displayName: clampString(user.displayName, 80, 'Jugador GTO'),
+          displayName: clampString(user.displayName, 80, 'Jugador Allin School'),
           ...(user.photoURL ? { photoURL: clampString(user.photoURL, 512) } : {}),
           elo,
-          masteryScore: Math.max(0, Math.min(100, Math.round(learningProfile.masteryScore || 80))),
+          masteryScore: Math.max(0, Math.min(100, Math.round(learningProfile.masteryScore || 0))),
           totalDecisions: Math.max(0, Math.round(learningProfile.totalDecisions || 0)),
           totalMistakes: Math.max(0, Math.round(learningProfile.totalMistakes || 0)),
           roadmapDoneIds,
@@ -565,6 +673,187 @@ export async function fetchUserCloudSummary(user: User): Promise<{
   return { profile, elo, cloudSm2Count, cloudMistakeCount };
 }
 
+/**
+ * Hidrata el almacenamiento local aislado por UID desde Firestore antes de subir cambios,
+ * garantizando que cada estudiante conserve su progreso al entrar desde otro dispositivo o cambiar de cuenta.
+ */
+export async function hydrateLocalStateFromCloud(user: User): Promise<UserProfileDoc | null> {
+  if (!user.uid || !user.emailVerified) return null;
+
+  let profile: UserProfileDoc | null = null;
+  try {
+    const profileSnap = await getDoc(doc(db, 'users', user.uid));
+    if (!profileSnap.exists()) return null;
+    profile = mapSnapshotToUserProfile(profileSnap.id, profileSnap.data() as Record<string, unknown>);
+  } catch {
+    return null;
+  }
+
+  // 1. Trainer ELO
+  const localTrainer = loadTrainerStats();
+  if (localTrainer.handsPlayed === 0 && localTrainer.elo === 1200 && profile.elo !== 1200) {
+    saveTrainerStats({ ...localTrainer, elo: profile.elo });
+  }
+
+  // 2. Evaluation Stats (XP, Nivel desbloqueado, notas y categorías)
+  const localEval = loadEvaluationStats();
+  const cloudEval = profile.evaluationStats;
+  if (
+    cloudEval &&
+    (cloudEval.xp > localEval.xp ||
+      cloudEval.examsTaken > localEval.examsTaken ||
+      cloudEval.unlockedLevel > localEval.unlockedLevel ||
+      Boolean(cloudEval.liveChallengeSummary) ||
+      Boolean(cloudEval.pt4Summary))
+  ) {
+    saveEvaluationStats({
+      ...localEval,
+      ...cloudEval,
+      categoryPerf: { ...cloudEval.categoryPerf, ...localEval.categoryPerf },
+      liveChallengeSummary: cloudEval.liveChallengeSummary ?? localEval.liveChallengeSummary,
+      pt4Summary: cloudEval.pt4Summary ?? localEval.pt4Summary
+    });
+  }
+
+  // 2b. Hydrate Reto 100 Manos across devices if cloud holds newer/more progress
+  if (cloudEval?.liveChallengeSummary) {
+    const localLive = loadLiveChallengeState();
+    const cloudLive = cloudEval.liveChallengeSummary;
+    if (
+      cloudLive.completedHands > localLive.completedHands ||
+      (localLive.records.length === 0 && cloudLive.records.length > 0)
+    ) {
+      saveLiveChallengeState({
+        active: cloudLive.active,
+        startedAt: cloudLive.updatedAt || Date.now(),
+        completedHands: cloudLive.completedHands,
+        targetHands: cloudLive.targetHands || 100,
+        updatedAt: cloudLive.updatedAt || Date.now(),
+        records: cloudLive.records as unknown as LiveDecisionRecord[]
+      });
+    }
+  }
+
+  // 3. Academy Category Stats
+  const localCatStats = getCategoryStatsFromLocal();
+  const cloudCatEntries = Object.entries(profile.categoryStats || {});
+  if (cloudCatEntries.length > 0) {
+    const mergedCatStats = { ...localCatStats };
+    let changed = false;
+    for (const [cat, cStat] of cloudCatEntries) {
+      const lStat = mergedCatStats[cat];
+      if (!lStat || cStat.attempts > lStat.attempts) {
+        mergedCatStats[cat] = { attempts: cStat.attempts, correct: cStat.correct };
+        changed = true;
+      }
+    }
+    if (changed) {
+      writeScopedItem(ACADEMY_STATS_STORAGE_KEY, JSON.stringify(mergedCatStats));
+    }
+  }
+
+  // 4. Career Roadmap Milestones
+  if (Array.isArray(profile.roadmapDoneIds) && profile.roadmapDoneIds.length > 0) {
+    try {
+      const rawRoadmap = readScopedItem(CAREER_ROADMAP_STORAGE_KEY);
+      const currentPhases: RoadmapPhase[] = rawRoadmap ? JSON.parse(rawRoadmap) : INITIAL_ROADMAP;
+      const doneSet = new Set(profile.roadmapDoneIds);
+      const hydratedPhases = currentPhases.map(phase => ({
+        ...phase,
+        milestones: (phase.milestones || []).map(m => ({
+          ...m,
+          done: m.done || doneSet.has(m.id)
+        }))
+      }));
+      writeScopedItem(CAREER_ROADMAP_STORAGE_KEY, JSON.stringify(hydratedPhases));
+    } catch {
+      // ignore roadmap hydration error
+    }
+  }
+
+  // 5. AutoLearningEngine Summary
+  AutoLearningEngine.getInstance().hydrateSummaryFromCloud({
+    totalDecisions: profile.totalDecisions,
+    totalMistakes: profile.totalMistakes,
+    masteryScore: profile.masteryScore
+  });
+
+  // 6. SM-2 Items Subcollection
+  try {
+    const sm2Snap = await getDocs(
+      query(collection(db, 'users', user.uid, 'sm2Items'), where('ownerId', '==', user.uid), limit(50))
+    );
+    const cloudSm2Items: SM2Item[] = sm2Snap.docs.map(d => {
+      const data = d.data() as Record<string, unknown>;
+      return {
+        id: d.id,
+        type: (data.itemType === 'hand' || data.itemType === 'scenario' ? data.itemType : 'concept') as SM2Item['type'],
+        title: String(data.title || 'Spot SM-2'),
+        category: String(data.category || 'General'),
+        content: {
+          prompt: String(data.prompt || ''),
+          explanation: String(data.explanation || ''),
+          rule: String(data.rule || '')
+        },
+        intervalDays: Number(data.intervalDays || 1),
+        repetitions: Number(data.repetitions || 0),
+        easeFactor: Number(data.easeFactor || 2.5),
+        nextReviewDate: Number(data.nextReviewDate || Date.now()),
+        createdDate: Date.now(),
+        reviewCount: Number(data.reviewCount || 0),
+        history: []
+      };
+    });
+    SpacedRepetitionManager.getInstance().mergeItemsFromCloud(cloudSm2Items);
+  } catch {
+    // Non-fatal
+  }
+
+  // 7. Critical Mistakes Subcollection
+  try {
+    const mSnap = await getDocs(
+      query(collection(db, 'users', user.uid, 'mistakes'), where('ownerId', '==', user.uid), limit(30))
+    );
+    const cloudMistakes: LearnerMistakeRecord[] = mSnap.docs.map(d => {
+      const data = d.data() as Record<string, unknown>;
+      return {
+        id: d.id,
+        timestamp: Date.now(),
+        scenarioTitle: String(data.scenarioTitle || 'Spot'),
+        heroCombo: String(data.heroCombo || 'AsKd'),
+        boardCards: [],
+        boardTexture: {
+          wetness: (typeof data.wetness === 'string' ? data.wetness : 'Seco (Dry)') as LearnerMistakeRecord['boardTexture']['wetness'],
+          suitPattern: 'Rainbow',
+          highCard: 'A',
+          isPaired: false,
+          summary: String(data.wetness || 'Seco (Dry)')
+        },
+        street: 'flop',
+        heroPos: 'BTN',
+        villainPos: 'BB',
+        potBB: 6,
+        chosenAction: String(data.chosenAction || 'Bet'),
+        bestAction: String(data.bestAction || 'Check'),
+        chosenFrequency: 0,
+        bestFrequency: 1,
+        evLossBB: 1,
+        evLossChips: 2,
+        evLossPercentOfPot: Number(data.evLossPercentOfPot || 0),
+        isMistakeThresholdExceeded: true,
+        grade: 'mistake',
+        leakCategory: String(data.wetness || 'Seco (Dry)'),
+        prescriptiveFix: String(data.prescriptiveFix || '')
+      };
+    });
+    LearnerService.getInstance().mergeMistakesFromCloud(cloudMistakes);
+  } catch {
+    // Non-fatal
+  }
+
+  return profile;
+}
+
 export async function runFullCloudSync(user: User): Promise<{
   profile: UserProfileDoc | null;
   sm2Synced: number;
@@ -594,7 +883,7 @@ export async function recordAdminAuditLog(
   try {
     await setDoc(doc(db, 'adminAuditLogs', logId), {
       actorUid: actor.uid,
-      actorEmail: clampString(actor.email, 160, 'admin@labstudio.app'),
+      actorEmail: clampString(actor.email, 160, 'admin@allinschool.app'),
       targetUid: clampString(targetUid, 128, 'system'),
       targetLabel: clampString(targetLabel, 160, 'Usuario'),
       action: clampString(action, 64, 'UPDATE'),
@@ -796,7 +1085,7 @@ export async function adminCreateOrUpdateManualUser(input: ManualUserInput): Pro
   if (!normalizedEmail || !normalizedEmail.includes('@')) {
     throw new Error('Ingresa un correo electrónico válido.');
   }
-  const safeName = clampString(input.displayName, 80, normalizedEmail.split('@')[0] || 'Jugador GTO');
+  const safeName = clampString(input.displayName, 80, normalizedEmail.split('@')[0] || 'Jugador Allin School');
   const cleanPerms: PlanPermissions = {
     labPro: Boolean(input.planPermissions.labPro),
     webBrain: Boolean(input.planPermissions.webBrain),
@@ -1103,4 +1392,106 @@ export async function fetchDatabaseUsageMetricsForAdmin(users: UserProfileDoc[])
   };
 }
 
-export { mapSnapshotToUserProfile, defaultEvaluationStats };
+export interface StudentSupportTicket {
+  id: string;
+  userUid: string;
+  userEmail: string;
+  userName: string;
+  subject: string;
+  description: string;
+  category: 'Acceso' | 'Pagos' | 'Duda Técnica' | 'Otro';
+  priority: 'low' | 'medium' | 'high';
+  status: 'open' | 'in_progress' | 'resolved';
+  adminNotes: string;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+}
+
+export async function submitStudentSupportTicket(
+  user: User,
+  input: {
+    subject: string;
+    description: string;
+    category: 'Acceso' | 'Pagos' | 'Duda Técnica' | 'Otro';
+    priority: 'low' | 'medium' | 'high';
+  }
+): Promise<string> {
+  if (!user.uid || !user.emailVerified) {
+    throw new Error('Debes iniciar sesión con una cuenta Google verificada.');
+  }
+  const cleanSubject = clampString(input.subject, 120, '');
+  const cleanDescription = clampString(input.description, 600, '');
+  if (cleanSubject.length < 2) {
+    throw new Error('El asunto debe tener al menos 2 caracteres.');
+  }
+  if (cleanDescription.length < 4) {
+    throw new Error('Describe tu consulta con al menos 4 caracteres.');
+  }
+
+  const ticketId = sanitizeDocId(`tkt-${Date.now()}-${Math.floor(Math.random() * 10000)}`);
+  const ticketPath = `supportTickets/${ticketId}`;
+  try {
+    await setDoc(doc(db, 'supportTickets', ticketId), {
+      userUid: user.uid,
+      userEmail: clampString(user.email, 160, 'jugador@labstudio.app').toLowerCase(),
+      userName: clampString(user.displayName, 80, 'Jugador GTO'),
+      subject: cleanSubject,
+      description: cleanDescription,
+      category: input.category,
+      priority: input.priority,
+      status: 'open',
+      adminNotes: '',
+      createdByUid: user.uid,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    return ticketId;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, ticketPath);
+  }
+}
+
+export async function fetchMySupportTickets(user: User): Promise<StudentSupportTicket[]> {
+  if (!user.uid || !user.emailVerified) return [];
+  const path = 'supportTickets';
+  try {
+    const q = query(
+      collection(db, 'supportTickets'),
+      where('userUid', '==', user.uid),
+      limit(20)
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map(d => {
+      const data = d.data() as Record<string, unknown>;
+      const status =
+        data.status === 'resolved' || data.status === 'in_progress' ? data.status : 'open';
+      const priority =
+        data.priority === 'high' || data.priority === 'low' ? data.priority : 'medium';
+      const category =
+        data.category === 'Acceso' ||
+        data.category === 'Pagos' ||
+        data.category === 'Duda Técnica' ||
+        data.category === 'Otro'
+          ? data.category
+          : 'Otro';
+      return {
+        id: d.id,
+        userUid: String(data.userUid || ''),
+        userEmail: String(data.userEmail || ''),
+        userName: String(data.userName || ''),
+        subject: String(data.subject || ''),
+        description: String(data.description || ''),
+        category,
+        priority,
+        status,
+        adminNotes: String(data.adminNotes || ''),
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt
+      };
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+  }
+}
+
+export { defaultEvaluationStats };
