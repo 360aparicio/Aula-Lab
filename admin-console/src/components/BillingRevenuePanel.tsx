@@ -295,7 +295,7 @@ export const BillingRevenuePanel: React.FC<BillingRevenuePanelProps> = ({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `lab-studio-ingresos-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `allin-studio-ingresos-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
     onStatus(`Exportadas ${filteredTxs.length} transacciones a CSV.`);

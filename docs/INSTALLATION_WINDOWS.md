@@ -1,6 +1,6 @@
-# GTO Studio — Windows Installation & Packaging Guide
+# Allin School & Lab Studio — Windows Installation & Packaging Guide
 
-This guide details how to build and package GTO Studio as a native Windows x64 offline executable (`.exe`) and installer.
+This guide details how to build and package Allin School (including Lab Studio & TheTracker2) as a native Windows x64 offline executable (`.exe`) and installer.
 
 ## 1. Prerequisites (On Windows Build Machine)
 
@@ -23,7 +23,7 @@ npm run build
 npx tauri build
 ```
 The resulting installer is generated at:
-`src-tauri/target/release/bundle/msi/GTO_Studio_x64_en-US.msi`
+`src-tauri/target/release/bundle/msi/Allin_School_x64_en-US.msi`
 
 ## 3. Option B: Electron Builder Packaging
 
@@ -36,7 +36,7 @@ npm run build
 npx electron-builder --win nsis --x64
 ```
 The resulting setup executable is generated at:
-`dist/GTO Studio Setup 1.0.0.exe`
+`dist/Allin School Setup 1.0.0.exe`
 
 ## 4. GitHub Actions Automated Windows Release Pipeline
 
@@ -70,6 +70,6 @@ jobs:
       - name: Upload Installer Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: gto-studio-windows-installer
+          name: allin-school-windows-installer
           path: dist/*.exe
 ```

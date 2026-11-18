@@ -2,7 +2,7 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  * 
- * Canonical Card & Deck representations for GTO Studio
+ * Canonical Card & Deck representations for Allin School · Lab Studio
  */
 
 export type Rank = '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | 'T' | 'J' | 'Q' | 'K' | 'A';

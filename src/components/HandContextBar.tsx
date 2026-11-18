@@ -229,7 +229,7 @@ export const HandContextBar: React.FC<HandContextBarProps> = ({
           <div className="grid grid-cols-3 gap-1.5">
             {[
               { id: 'nit' as const, label: 'Nit', icon: Shield, desc: 'Roca / Pasivo' },
-              { id: 'regular' as const, label: 'Regular', icon: Scale, desc: 'TAG / GTO' },
+              { id: 'regular' as const, label: 'Regular', icon: Scale, desc: 'TAG / Nash' },
               { id: 'fish' as const, label: 'Fish', icon: Fish, desc: 'Calling Station' },
             ].map((p) => {
               const isSelected = opponentProfile === p.id;

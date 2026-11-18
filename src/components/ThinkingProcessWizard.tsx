@@ -568,11 +568,11 @@ export const ThinkingProcessWizard: React.FC<ThinkingProcessWizardProps> = ({
                 },
                 {
                   id: 'regular' as const,
-                  title: 'Regular (TAG / GTO)',
+                  title: 'Regular (TAG / Equilibrio)',
                   icon: Scale,
-                  badge: 'GTO Equilibrado',
+                  badge: 'Equilibrio Nash',
                   desc: 'Frecuencias balanceadas de valor y semi-farol con blockers de nuts.',
-                  hint: 'Explota: Juega estrategia GTO balanceada, controlando botes y protegiendo rangos.'
+                  hint: 'Explota: Juega estrategia Nash balanceada, controlando botes y protegiendo rangos.'
                 },
                 {
                   id: 'fish' as const,
@@ -1413,7 +1413,7 @@ export const ThinkingProcessWizard: React.FC<ThinkingProcessWizardProps> = ({
       )}
 
       {/* ========================================================================= */}
-      {/* ÁRBOL DE DECISIÓN EN VIVO & ALERTAS DE CONVERGENCIA GTO                   */}
+      {/* ÁRBOL DE DECISIÓN EN VIVO & ALERTAS DE CONVERGENCIA NASH                  */}
       {/* ========================================================================= */}
       {showLiveTree && gameTree && onSelectNode && (
         <div className="bg-neutral-950/80 rounded-2xl border border-neutral-800 p-4 sm:p-5 space-y-4 shadow-xl">

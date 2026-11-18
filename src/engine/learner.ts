@@ -387,7 +387,7 @@ export class LearnerService {
       else if (group.count >= 2 || avgEvPct > 5.5) severity = 'Alta';
 
       let diagnosis = `Tiendes a cometer desviaciones con frecuencia en texturas de tipo ${textureType}.`;
-      let recommendation = 'Repasa las reglas de sizing y frecuencias GTO para esta textura.';
+      let recommendation = 'Repasa las reglas de sizing y frecuencias Nash para esta textura.';
 
       if (textureType.includes('Monótono')) {
         diagnosis = 'Sobre-apuestas parejas altas en boards monocolor cuando el rival puede tener color cerrado o proyecto nut.';

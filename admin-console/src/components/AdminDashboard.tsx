@@ -2,8 +2,8 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  *
- * AdminDashboard V4.0 (lab-studio-admin):
- * Consola SaaS Completa con Arquitectura de Barra Lateral + 7 Secciones Lógicas "Para Dummies":
+ * AdminDashboard (Allin Studio Admin · allin-studio-admin):
+ * Consola SaaS Completa con Arquitectura de Barra Lateral + 7 Secciones Lógicas Claras:
  * 1. Inicio (Resumen Ejecutivo + Acciones Rápidas)
  * 2. Usuarios y Permisos (Altas Manuales, Planes, Acciones Masivas, Inspector SM-2/ELO)
  * 3. Registros e Invitaciones (/userInvites + Ingresos Recientes)
@@ -134,12 +134,12 @@ interface ServerRuntimeInfo {
 const EDUCATIONAL_LEVELS_META: Array<{ level: DifficultyLevel; name: string }> = [
   { level: 1, name: 'Nivel 1 · Cimientos Sólidos (NL2–NL5)' },
   { level: 2, name: 'Nivel 2 · Regulares Low-Stakes (NL10–NL25)' },
-  { level: 3, name: 'Nivel 3 · Mid-Stakes GTO (NL50)' },
+  { level: 3, name: 'Nivel 3 · Mid-Stakes Nash (NL50)' },
   { level: 4, name: 'Nivel 4 · High-Stakes & Élite (NL100+)' }
 ];
 
 const PERMISSION_ITEMS: Array<{ key: keyof PlanPermissions; short: string; label: string; desc: string }> = [
-  { key: 'labPro', short: 'Lab', label: 'Laboratorio Pro', desc: 'Árbol GTO completo, rangos 13×13 y Práctica multi-calle' },
+  { key: 'labPro', short: 'Lab', label: 'Laboratorio Pro', desc: 'Árbol Nash completo, rangos 13×13 y Práctica multi-calle' },
   { key: 'webBrain', short: 'Web', label: 'Cerebro Web', desc: 'Sincronización con meta-reglas de internet y coach adaptativo' },
   { key: 'unlimitedEval', short: 'Eval', label: 'Eval. Ilimitadas', desc: 'Exámenes sin límite diario en Niveles 1–4, Temas y Spots' },
   { key: 'pdfExport', short: 'PDF', label: 'Exportar PDF', desc: 'Descarga de reportes de progreso y Manual 6-Max en PDF' },
@@ -212,12 +212,12 @@ export const AdminDashboard: React.FC = () => {
   const [runtimeInfo, setRuntimeInfo] = useState<ServerRuntimeInfo | null>(null);
   const [checkingHealth, setCheckingHealth] = useState<boolean>(false);
   const [metaState, setMetaState] = useState<SolverMetaState>({
-    version: '4.2.0-admin',
+    version: '1.0.0-admin',
     totalUserSamplesLearned: 42,
-    internetQuerySummary: 'Base GTO 6-Max conectada.',
+    internetQuerySummary: 'Base Nash 6-Max conectada.',
     rules: []
   });
-  const [syncTopic, setSyncTopic] = useState('NL2-NL100 6-Max GTO trends C-bet and 3-bet defense 2025');
+  const [syncTopic, setSyncTopic] = useState('NL2-NL100 6-Max Nash trends C-bet and 3-bet defense');
   const [syncingInternet, setSyncingInternet] = useState<boolean>(false);
 
   // Database Usage & Growth Metrics
@@ -298,7 +298,7 @@ export const AdminDashboard: React.FC = () => {
         const data = await res.json();
         setRuntimeInfo({
           status: String(data?.status || 'ok'),
-          service: String(data?.service || 'lab-studio-admin'),
+          service: String(data?.service || 'allin-studio-admin'),
           nodeVersion: data?.nodeVersion,
           uptimeSeconds: data?.uptimeSeconds,
           memoryRssMB: data?.memoryRssMB,
@@ -313,14 +313,14 @@ export const AdminDashboard: React.FC = () => {
         const hData = await hRes.json();
         setRuntimeInfo({
           status: String(hData?.status || 'ok'),
-          service: String(hData?.service || 'lab-studio-admin'),
+          service: String(hData?.service || 'allin-studio-admin'),
           latencyMs: Math.round(performance.now() - t0)
         });
       }
     } catch {
       setRuntimeInfo({
         status: 'offline',
-        service: 'lab-studio-admin',
+        service: 'allin-studio-admin',
         latencyMs: 0
       });
     } finally {
@@ -882,7 +882,7 @@ export const AdminDashboard: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `lab-studio-usuarios-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `allin-school-usuarios-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
     showSuccess(`Exportados ${filteredUsers.length} usuarios en CSV.`);
@@ -995,8 +995,8 @@ export const AdminDashboard: React.FC = () => {
               <ShieldCheck className="w-5 h-5" />
             </div>
             <div>
-              <div className="text-sm font-bold text-white leading-tight">Lab Studio Admin</div>
-              <div className="text-[11px] text-neutral-400 font-mono">Plataforma SaaS</div>
+              <div className="text-sm font-bold text-white leading-tight">Allin Studio Admin</div>
+              <div className="text-[11px] text-neutral-400 font-mono">Allin School · SaaS</div>
             </div>
           </div>
         </div>

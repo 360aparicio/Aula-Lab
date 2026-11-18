@@ -2,9 +2,9 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  *
- * Comprehensive World-Class GTO Mathematical & Simulator Audit Regression Suite:
+ * Comprehensive Lab Studio Nash Mathematical & Simulator Audit Regression Suite:
  * Verifies every invariant fixed across DCFR, GameTree, HandSimulator,
- * PT4Engine, DiagnosticEngine, AutoLearningEngine, and Scenario Card Pools.
+ * TheTracker2Engine, DiagnosticEngine, AutoLearningEngine, and Scenario Card Pools.
  */
 
 import { clearMemoryUserStorage, setActiveStorageUserUid } from '../src/lib/userStorage';
@@ -18,7 +18,7 @@ import {
   estimateHandStrengthCategory
 } from '../src/engine/handSimulator';
 import { buildDiagnosticFromLiveChallenge } from '../src/engine/diagnosticEngine';
-import { parseHandHistoriesText } from '../src/engine/pt4Engine';
+import { parseHandHistoriesText } from '../src/engine/theTracker2Engine';
 import { AutoLearningEngine } from '../src/engine/autoLearningEngine';
 import { PREBUILT_SCENARIOS } from '../src/trainer/prebuiltScenarios';
 import { getAllAcademyScenarios } from '../src/engine/academySpots';
@@ -175,7 +175,7 @@ export function runGtoAuditTests(): { passed: number; failed: number; errors: st
     `DCFRSolver computes real non-zero root p1EV/p2EV (got p1=${res.p1EV}, p2=${res.p2EV})`
   );
 
-  // 7. PT4 parser accuracy: opener folded to 3-bet + Villain donk-bet on Flop must not credit Hero CBet
+  // 7. TheTracker2 parser accuracy: opener folded to 3-bet + Villain donk-bet on Flop must not credit Hero CBet
   const hhEdgeText = `PokerStars Hand #555444333: Hold'em No Limit ($0.05/$0.10 USD)
 Table 'Paris' 6-max Seat #3 is the button
 Seat 3: HeroPlayer ($10 in chips)
@@ -206,7 +206,7 @@ VillainBB collected $1.05 from pot`;
       parsedEdge[0].threeBet === false &&
       parsedEdge[0].cbet === false &&
       parsedEdge[0].heroInvestedBB === 5.5,
-    `PT4 parser distinguishes Villain donk vs Hero CBet and counts incremental Hero investment accurately (got 3bet=${parsedEdge[0]?.threeBet}, cbet=${parsedEdge[0]?.cbet}, inv=${parsedEdge[0]?.heroInvestedBB})`
+    `TheTracker2 parser distinguishes Villain donk vs Hero CBet and counts incremental Hero investment accurately (got 3bet=${parsedEdge[0]?.threeBet}, cbet=${parsedEdge[0]?.cbet}, inv=${parsedEdge[0]?.heroInvestedBB})`
   );
 
   // 8. AutoLearningEngine clean play must not emit false "Botes 3-Bet" leak

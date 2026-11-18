@@ -1230,7 +1230,7 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
                   ) : (
                     <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-800 flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                      <span>Línea GTO Válida ({feedback.evLossPercentOfPot}% Loss ≤ 5%)</span>
+                      <span>Línea Nash Válida ({feedback.evLossPercentOfPot}% Loss ≤ 5%)</span>
                     </span>
                   )}
                 </div>
@@ -1298,7 +1298,7 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
               {isAdvancingStreet && (
                 <div className="mt-1 px-3.5 py-1.5 bg-blue-950/80 border border-blue-500/60 rounded-lg text-xs font-mono text-blue-200 flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full border-2 border-blue-400 border-t-transparent animate-spin" />
-                  <span>Calculando equilibrio GTO para la siguiente calle...</span>
+                  <span>Calculando equilibrio Nash para la siguiente calle...</span>
                 </div>
               )}
 
@@ -1321,17 +1321,17 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
                   <div className="flex items-center justify-between gap-2 border-b border-rose-800/80 pb-2 mb-2">
                     <span className="text-xs font-black uppercase tracking-wider text-rose-200 flex items-center gap-1.5">
                       <AlertOctagon className="w-4 h-4 text-rose-400" />
-                      <span>⚠️ Umbral de Error GTO Superado (&gt;5% Pérdida de EV)</span>
+                      <span>⚠️ Umbral de Error Nash Superado (&gt;5% Pérdida de EV)</span>
                     </span>
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-900 text-rose-100 font-bold border border-rose-400">
                       -{feedback.evLossBB} BB ({feedback.evLossPercentOfPot}% Pot)
                     </span>
                   </div>
                   <p className="text-xs text-rose-100 leading-relaxed font-medium">
-                    Tu acción <strong>{feedback.chosenAction}</strong> ({((feedback.chosenFrequency) * 100).toFixed(1)}% freq) se desvía drásticamente de la estrategia óptima. La línea GTO calculada era <strong>{feedback.bestAction}</strong> ({((feedback.bestFrequency) * 100).toFixed(1)}% freq).
+                    Tu acción <strong>{feedback.chosenAction}</strong> ({((feedback.chosenFrequency) * 100).toFixed(1)}% freq) se desvía drásticamente de la estrategia óptima. La línea Nash calculada era <strong>{feedback.bestAction}</strong> ({((feedback.bestFrequency) * 100).toFixed(1)}% freq).
                   </p>
                   <div className="mt-2 pt-2 border-t border-rose-900/60 flex items-center justify-between text-[11px] font-mono text-rose-300">
-                    <span>Límite de Tolerancia GTO: 5.0%</span>
+                    <span>Límite de Tolerancia Nash: 5.0%</span>
                     <span className="font-bold text-white">Desviación: {feedback.evLossPercentOfPot}% (+{(feedback.evLossPercentOfPot - 5.0).toFixed(1)}% exceso)</span>
                   </div>
                 </div>
@@ -1399,7 +1399,7 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
                     return (
                       <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-xs font-mono text-neutral-400">
                         <div className="w-3 h-3 rounded-full border-2 border-blue-400 border-t-transparent animate-spin" />
-                        <span>Sincronizando estrategia GTO...</span>
+                        <span>Sincronizando equilibrio Lab Studio...</span>
                       </div>
                     );
                   }
@@ -1842,7 +1842,7 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
                         <span className="text-neutral-400">Bote: {m.potBB} BB</span>
                       </div>
                       <p className="text-neutral-300">
-                        Elegiste: <span className="text-rose-300 font-bold">{m.chosenAction}</span> ({(m.chosenFrequency * 100).toFixed(0)}% freq) · GTO Óptimo:{' '}
+                        Elegiste: <span className="text-rose-300 font-bold">{m.chosenAction}</span> ({(m.chosenFrequency * 100).toFixed(0)}% freq) · Nash Óptimo:{' '}
                         <span className="text-emerald-400 font-bold">{m.bestAction}</span> ({(m.bestFrequency * 100).toFixed(0)}% freq)
                       </p>
                       <p className="text-[11px] text-neutral-400 italic">

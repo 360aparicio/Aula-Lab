@@ -5,7 +5,7 @@
  * StreetCoachGauge: IA Coach & Analizador de Decisiones de Calle.
  * Diagnóstico prescriptivo por calle (Preflop, Flop, Turn, River) indicando la acción
  * exacta recomendada (Check, Fold, Bet % pot y BB), con un visualizador 'Action Gauge'
- * y explicación "Paso a Paso para Dummies" (Lógica del Bote, Pot Odds, SPR, Equity Mínima y Perfil del Rival).
+ * y explicación "Clara Paso a Paso" (Lógica del Bote, Pot Odds, SPR, Equity Mínima y Perfil del Rival).
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
@@ -128,7 +128,7 @@ export const StreetCoachGauge: React.FC<StreetCoachProps> = ({
           betBB = Number((pot * 0.33).toFixed(1));
           gaugePosition = 45;
           confidence = 91;
-          rationaleShort = 'C-bet pequeña estándar de GTO (33% del bote). Presión en todo el rango con ventaja de equity.';
+          rationaleShort = 'C-bet pequeña estándar de Equilibrio Nash (33% del bote). Presión en todo el rango con ventaja de equity.';
           rationaleDummies = 'Una apuesta pequeña de 1/3 del bote ejerce presión barata sobre todo el rango rival, negando equity a cartas overcard y cobrando poco riesgo.';
         }
       } else if (isMedium) {
@@ -259,7 +259,7 @@ export const StreetCoachGauge: React.FC<StreetCoachProps> = ({
               </span>
             </h3>
             <p className="text-xs text-neutral-400">
-              Diagnóstico prescriptivo GTO & Explotativo en tiempo real
+              Diagnóstico prescriptivo Nash & Explotativo en tiempo real
             </p>
           </div>
         </div>
@@ -380,7 +380,7 @@ export const StreetCoachGauge: React.FC<StreetCoachProps> = ({
           <div className="p-4 bg-neutral-950/70 border border-neutral-800 rounded-xl space-y-2">
             <div className="flex items-center gap-2 text-amber-400 text-xs font-bold uppercase tracking-wider">
               <HelpCircle className="w-4 h-4" />
-              <span>Explicación Paso a Paso para Dummies:</span>
+              <span>Explicación Clara Paso a Paso:</span>
             </div>
             <p className="text-xs text-neutral-300 leading-relaxed font-sans">
               {recommendation.rationaleDummies}
@@ -396,7 +396,7 @@ export const StreetCoachGauge: React.FC<StreetCoachProps> = ({
                   <span>Meta Solver &amp; Aprendizaje Colectivo: {adaptiveMetaRule.topic}</span>
                 </span>
                 <span className="font-mono text-[10px] text-cyan-300">
-                  {adaptiveMetaRule.sizingPctPot}% Pot · {adaptiveMetaRule.gtoFrequencyPct}% GTO
+                  {adaptiveMetaRule.sizingPctPot}% Pot · {adaptiveMetaRule.gtoFrequencyPct}% Nash
                 </span>
               </div>
               <p className="text-[11px] text-neutral-300 leading-relaxed font-sans">

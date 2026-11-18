@@ -79,7 +79,7 @@ export const PlayerLiveCoachTracker: React.FC<PlayerLiveCoachTrackerProps> = ({
             <h4 className="text-xs font-bold text-white flex items-center gap-2">
               Auto-Aprendizaje & Repetición Espaciada SM-2
               <span className="text-[10px] text-blue-400 font-mono">
-                · Autosuficiente V4.2 Pro
+                · Motor Adaptativo Allin School
               </span>
             </h4>
             <span className="text-[11px] text-neutral-400">
@@ -91,7 +91,7 @@ export const PlayerLiveCoachTracker: React.FC<PlayerLiveCoachTrackerProps> = ({
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <div className="text-right">
-              <span className="text-[10px] text-neutral-500 uppercase block">Puntuación GTO:</span>
+              <span className="text-[10px] text-neutral-500 uppercase block">Puntuación Nash:</span>
               <span className="text-sm font-bold font-mono text-emerald-400">{profile.masteryScore} / 100</span>
             </div>
             <div className="text-right pl-3 border-l border-neutral-800">

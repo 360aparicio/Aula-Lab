@@ -2,7 +2,7 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  *
- * AdminLoginScreen: Portal de acceso independiente para Administradores de Lab Studio.
+ * AdminLoginScreen: Portal de acceso independiente para Administradores de Allin Studio.
  */
 
 import React from 'react';
@@ -23,9 +23,9 @@ export const AdminLoginScreen: React.FC = () => {
           </div>
           <div>
             <div className="text-sm font-bold text-white flex items-center gap-2">
-              <span>Lab Studio · Consola Admin</span>
+              <span>Allin Studio Admin</span>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800">
-                REPO INDEPENDIENTE V4.2
+                CONSOLA SAAS INDEPENDIENTE
               </span>
             </div>
             <p className="text-[11px] text-neutral-400">
@@ -146,7 +146,7 @@ export const AdminLoginScreen: React.FC = () => {
       </main>
 
       <footer className="max-w-3xl w-full mx-auto text-center text-[11px] text-neutral-500 border-t border-neutral-900 pt-4">
-        Lab Studio Admin Console (lab-studio-admin) · Conectado en vivo vía Firestore al Aula Educativo
+        Allin Studio Admin (allin-studio-admin) · Conectado en vivo vía Firestore a Allin School
       </footer>
     </div>
   );

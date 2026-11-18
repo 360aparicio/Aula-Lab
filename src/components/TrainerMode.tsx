@@ -532,7 +532,7 @@ export const TrainerMode: React.FC<TrainerModeProps> = ({
                   <Layers className="w-5 h-5 text-blue-400 mx-auto" />
                   <div className="font-semibold text-white">Esperando tu primera decisión</div>
                   <p>
-                    Al actuar en el Flop verás aquí la frecuencia GTO, Equity estimada, Pot Odds y ajuste explotativo frente a {handState.villainArchetype}.
+                    Al actuar en el Flop verás aquí la frecuencia Nash, Equity estimada, Pot Odds y ajuste explotativo frente a {handState.villainArchetype}.
                   </p>
                 </div>
               ) : (
@@ -611,7 +611,7 @@ export const TrainerMode: React.FC<TrainerModeProps> = ({
 
               <div className="p-3.5 rounded-xl bg-black border border-neutral-800 space-y-2">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-neutral-400">Termómetro de Precisión GTO</span>
+                  <span className="text-neutral-400">Termómetro de Precisión Nash</span>
                   <span className="font-mono font-bold tabular-nums text-white">{sessionStats.acc.toFixed(1)}%</span>
                 </div>
                 <div className="w-full h-2 rounded-full bg-neutral-900 overflow-hidden border border-neutral-800">

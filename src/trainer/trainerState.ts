@@ -2,7 +2,7 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  * 
- * Interactive GTO Training Session Engine with Multi-Street Play,
+ * Interactive Lab Studio Training Session Engine with Multi-Street Play,
  * Elo progression, EV loss metrics, and persistent attempt logging.
  */
 
@@ -203,7 +203,7 @@ export function dealRandomVillainHand(
 }
 
 /**
- * Grade user action based on GTO strategy frequencies and calculate EV loss
+ * Grade user action based on Nash strategy frequencies and calculate EV loss
  */
 export function evaluateUserAction(
   chosenActionType: string,
@@ -321,7 +321,7 @@ export function evaluateUserAction(
 }
 
 /**
- * Sample an action for GTO Villain according to its strategy distribution
+ * Sample an action for Villain according to its Nash strategy distribution
  */
 export function sampleVillainAction(
   strategyResult: NodeStrategyResult,

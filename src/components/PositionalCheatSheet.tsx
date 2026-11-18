@@ -2,7 +2,7 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  * 
- * PositionalCheatSheet: Cheat Sheet y Manual Posicional Maestro (GTO & Explotativo) 6-Max.
+ * PositionalCheatSheet: Cheat Sheet y Manual Posicional Maestro (Equilibrio Nash & Explotativo) 6-Max.
  * Cobertura exhaustiva de las 6 posiciones: EP (UTG), MP (HJ), CO, BTN, SB y BB.
  * Incluye RFI %, combos (Premium, Especulativas, Faroles con blockers), desviaciones
  * explotativas (Calling Stations, Nits, LAGs), matriz de defensa ante 3-Bets,
@@ -252,7 +252,7 @@ export const PositionalCheatSheet: React.FC = () => {
             <h2 className="text-xl font-bold text-white flex items-center gap-2">
               Cheat Sheet y Manual Posicional Maestro 6-Max
               <span className="text-xs px-2.5 py-0.5 rounded-full bg-cyan-950 border border-cyan-800 text-cyan-300 font-mono">
-                GTO & Explotativo
+                Equilibrio Nash & Explotativo
               </span>
             </h2>
             <p className="text-xs text-neutral-400 mt-0.5">
@@ -443,7 +443,7 @@ export const PositionalCheatSheet: React.FC = () => {
               <span>Matriz de Defensa ante 3-Bet desde {activePos}:</span>
             </h3>
             <span className="text-[11px] font-mono text-neutral-400">
-              Total Defensa: {100 - currentData.defenseVs3Bet.foldPct}% (GTO Equilibrium)
+              Total Defensa: {100 - currentData.defenseVs3Bet.foldPct}% (Equilibrio Nash)
             </span>
           </div>
 
@@ -556,7 +556,7 @@ export const PositionalCheatSheet: React.FC = () => {
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-bold text-neutral-200 uppercase tracking-wider flex items-center gap-2">
               <FileText className="w-4 h-4 text-cyan-400" />
-              <span>Matriz Universal de Pot Odds, MDF & SPR (Fórmulas para Dummies):</span>
+              <span>Matriz Universal de Pot Odds, MDF & SPR (Guía Rápida):</span>
             </h3>
           </div>
 
@@ -568,7 +568,7 @@ export const PositionalCheatSheet: React.FC = () => {
                   <th className="py-2.5 px-3">Pot Odds (%)</th>
                   <th className="py-2.5 px-3">Odds Ratio</th>
                   <th className="py-2.5 px-3">Frecuencia Mínima de Defensa (MDF)</th>
-                  <th className="py-2.5 px-3">Regla Práctica para Dummies</th>
+                  <th className="py-2.5 px-3">Regla Práctica Directa</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-800/60 font-mono">

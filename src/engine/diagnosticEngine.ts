@@ -287,7 +287,7 @@ export function buildDiagnosticFromTracker2Hands(
 ): LevelDiagnosticReport {
   const hud = computeHudStats(hands);
   const { archetype, summary } = classifyArchetype(hud.vpip, hud.pfr);
-  const estimatedLevel = estimateLimitFromStats(hud.gtoEstimatedAcc, hud.bbPer100, hands.length);
+  const estimatedLevel = estimateLimitFromStats(hud.nashPrecisionPct, hud.bbPer100, hands.length);
 
   const positionalBreakdown: PositionalMetricRow[] = SIM_POSITIONS.map(pos => {
     const pHands = hands.filter(h => h.heroPos === pos);
@@ -297,7 +297,7 @@ export function buildDiagnosticFromTracker2Hands(
       hands: pHands.length,
       vpip: pStats.vpip,
       pfr: pStats.pfr,
-      gtoAcc: pStats.gtoEstimatedAcc,
+      gtoAcc: pStats.nashPrecisionPct,
       bbPer100: pStats.bbPer100,
       status: pHands.length === 0 ? 'Estable' : pStats.bbPer100 >= 0 ? 'Fuerte' : pStats.bbPer100 >= -18 ? 'Estable' : 'Fuga'
     };
@@ -372,7 +372,7 @@ export function buildDiagnosticFromTracker2Hands(
       cbet: hud.cbet,
       wtsd: hud.wtsd,
       wsd: hud.wsd,
-      gtoAccuracy: hud.gtoEstimatedAcc,
+      gtoAccuracy: hud.nashPrecisionPct,
       bbPer100: hud.bbPer100
     },
     positionalBreakdown,

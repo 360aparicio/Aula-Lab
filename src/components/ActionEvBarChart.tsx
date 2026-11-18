@@ -2,9 +2,9 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  * 
- * Action EV (Expected Value) Bar Chart for GTO Studio Trainer:
+ * Action EV (Expected Value) Bar Chart for Lab Studio Trainer:
  * Visualizes the Expected Value (in BB and chips) of each available action
- * at the current decision node alongside GTO equilibrium frequencies.
+ * at the current decision node alongside Nash equilibrium frequencies.
  * Clearly exposes the magnitude of EV mistakes (EV Loss / ΔEV vs optimal action).
  */
 

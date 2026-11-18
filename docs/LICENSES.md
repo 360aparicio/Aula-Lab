@@ -1,7 +1,7 @@
-# GTO Studio — Open Source Licenses & Attribution
+# Allin School & Lab Studio — Open Source Licenses & Attribution
 
 ## Project License
-GTO Studio is distributed under the Apache License 2.0.
+Allin School, Lab Studio, TheTracker2, and Allin Studio Admin (Allin Studio Ecosystem) are distributed under the Apache License 2.0.
 
 ## Third-Party Libraries & Dependencies
 1. **React & React DOM**: MIT License

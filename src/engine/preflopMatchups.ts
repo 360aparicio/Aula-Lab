@@ -39,10 +39,10 @@ export const OPPONENT_PROFILES: Record<OpponentProfile, OpponentProfileInfo> = {
   },
   regular: {
     id: 'regular',
-    name: 'Regular (TAG / GTO Equilibrado)',
-    tag: 'GTO Equilibrado',
+    name: 'Regular (TAG / Nash Equilibrado)',
+    tag: 'Nash Equilibrado',
     desc: 'Jugador competente con frecuencias balanceadas de valor y semi-faroles según teoría de juegos.',
-    exploitHint: 'Juega líneas óptimas GTO, mezclando apuestas con blockers y protegiendo rangos de check.',
+    exploitHint: 'Juega líneas óptimas Nash, mezclando apuestas con blockers y protegiendo rangos de check.',
     tendencies: ['VPIP estándar (22-26%)', 'PFR equilibrado (18-22%)', '3-Bet polarizado (7-9%)', 'Defensa sólida']
   },
   fish: {

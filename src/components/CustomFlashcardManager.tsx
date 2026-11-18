@@ -191,7 +191,7 @@ export const CustomFlashcardManager: React.FC = () => {
       answer: newAnswer.trim(),
       category: newCategory,
       situationContext: 'Personalizada por el usuario',
-      keyRule: newRule.trim() || 'Regla mnemotécnica de decisión GTO.',
+      keyRule: newRule.trim() || 'Regla mnemotécnica de decisión Nash.',
       intervalDays: 1,
       repetitions: 0,
       easeFactor: 2.5,
@@ -421,13 +421,13 @@ export const CustomFlashcardManager: React.FC = () => {
                   <div className="mt-4 pt-4 border-t border-blue-500/30 bg-blue-950/20 rounded-xl p-4 space-y-2 animate-fadeIn">
                     <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-bold uppercase tracking-wider">
                       <CheckCircle2 className="w-4 h-4" />
-                      Línea Óptima & Solución GTO:
+                      Línea Óptima &amp; Solución Nash:
                     </div>
                     <p className="text-sm sm:text-base font-bold text-white">
                       {currentCard.answer}
                     </p>
                     <div className="text-xs text-neutral-300 bg-black/40 rounded-lg p-2.5 border border-neutral-800 mt-2">
-                      <strong className="text-blue-400 block mb-0.5">Regla Nemotécnica para Dummies:</strong>
+                      <strong className="text-blue-400 block mb-0.5">Regla Nemotécnica Directa:</strong>
                       {currentCard.keyRule}
                     </div>
 
@@ -492,7 +492,7 @@ export const CustomFlashcardManager: React.FC = () => {
             )}
           </div>
 
-          {/* Panel Lateral: Parámetros del Algoritmo SM-2 y Guía para Dummies */}
+          {/* Panel Lateral: Parámetros del Algoritmo SM-2 y Guía Directa */}
           <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-5 space-y-4">
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
               <Zap className="w-4 h-4 text-blue-400" />
@@ -602,7 +602,7 @@ export const CustomFlashcardManager: React.FC = () => {
               </div>
 
               <div>
-                <label className="text-xs text-neutral-400 block mb-1">Regla Nemotécnica para Dummies (Opcional):</label>
+                <label className="text-xs text-neutral-400 block mb-1">Regla Nemotécnica Clave (Opcional):</label>
                 <input
                   type="text"
                   value={newRule}

@@ -1,14 +1,14 @@
-# GTO Studio Architecture
+# Allin School & Lab Studio Architecture
 
 ## 1. System Overview
 
-GTO Studio is structured into three decoupled layers:
+Allin School (with the proprietary Lab Studio Nash Engine and TheTracker2 HUD) is structured into three decoupled layers:
 
 ```
 ┌────────────────────────────────────────────────────────┐
 │                   Capa A: Interface                    │
 │   React 19 · Tailwind CSS v4 · 13x13 Range Matrix      │
-│   Decision Tree Viewer · Strategy Heatmap · GTO Trainer│
+│   Decision Tree Viewer · Strategy Heatmap · Trainer    │
 └───────────────────────────┬────────────────────────────┘
                             │
 ┌───────────────────────────▼────────────────────────────┐
@@ -20,8 +20,8 @@ GTO Studio is structured into three decoupled layers:
                             │
 ┌───────────────────────────▼────────────────────────────┐
 │                Capa C: Persistence                     │
-│   Offline Browser DB · Scenario Schemas · JSON Export  │
-│   Trainer Elo History · In-Memory Showdown Matrix      │
+│   Scoped Browser DB · Scenario Schemas · JSON Export   │
+│   Trainer Elo History · Cloud Sync & Admin Console     │
 └────────────────────────────────────────────────────────┘
 ```
 
@@ -33,16 +33,17 @@ GTO Studio is structured into three decoupled layers:
   - `combos.ts`: 169 canonical categories and 1326 combos with blocker removal.
   - `range.ts`: 13×13 range matrix model, range parser/serializer, presets.
   - `gameTree.ts`: Betting tree builder with legal action validation.
-  - `dcfr.ts`: Discounted Counterfactual Regret Minimization engine.
+  - `dcfr.ts`: Discounted Counterfactual Regret Minimization engine (Lab Studio).
   - `kuhn.ts`: Golden analytical reference solver.
   - `solverRunner.ts`: Non-blocking time-sliced solver manager.
+  - `theTracker2Engine.ts`: Multi-DB hand history parser, ZIP/GZIP backup & 3-box HUD engine.
 - `src/components/`:
   - `Header.tsx`: Top bar navigation.
   - `BoardSelector.tsx`: Interactive board card picker.
   - `RangeMatrix13x13.tsx`: 13×13 range grid with brushes and blocker highlighting.
   - `DecisionTreeViewer.tsx`: Tree hierarchy explorer.
   - `StrategyMatrixView.tsx`: Strategy heatmap per decision node.
-  - `TrainerModule.tsx`: Interactive training practice against GTO strategy.
+  - `TrainerModule.tsx`: Interactive training practice against Equilibrio Nash strategy.
   - `ScenarioManager.tsx`: Prebuilt and custom scenarios.
   - `BenchmarkAndDocs.tsx`: Live in-browser math test runner.
 - `tests/`:

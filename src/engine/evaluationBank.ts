@@ -62,7 +62,7 @@ export const EDUCATIONAL_LEVELS: LevelDefinition[] = [
   },
   {
     level: 3,
-    name: 'Nivel 3 · Mid-Stakes GTO',
+    name: 'Nivel 3 · Mid-Stakes Nash',
     stakes: 'NL50',
     badge: 'AVANZADO',
     description: 'Botes 3-Bet con SPR bajo, 4-Bet bluffs con bloqueadores, turn overbets y control monótono.',
@@ -73,7 +73,7 @@ export const EDUCATIONAL_LEVELS: LevelDefinition[] = [
     level: 4,
     name: 'Nivel 4 · High-Stakes & Élite',
     stakes: 'NL100+',
-    badge: 'ÉLITE GTO',
+    badge: 'ÉLITE NASH',
     description: 'Polarización river 150%, bluff-catching por bloqueadores exactos y explotación fina contra Regs/LAGs.',
     xpRequired: 900,
     passScorePct: 80
@@ -711,7 +711,7 @@ const BLUEPRINTS: SpotBlueprint[] = [
       { label: 'Check Behind Pasivo', action: 'CHECK', isCorrect: false, evLossPct: 8.1 }
     ],
     explanationDummies: 'En el Turn aparecen cartas altas (As/Rey/Dama) que favorecen muchísimo al agresor preflop y NO a la BB que solo defendió manos medias. Al tener rango polarizado (Nuts o Semi-bluff fuertes), el Overbet 125% pone máxima presión matemática.',
-    dummiesTip: 'Nivel 4 GTO: Cuando tienes mucho más "Nuts" que el rival en el Turn, ¡rompe la barrera del 100% del bote!',
+    dummiesTip: 'Nivel 4 Nash: Cuando tienes mucho más "Nuts" que el rival en el Turn, ¡rompe la barrera del 100% del bote!',
     leakWarning: 'Fuga Común: Apostar siempre 50% por costumbre en el Turn dejando valor y fold equity en la mesa.'
   },
   // 16. River Bluff Catching vs Missed Draws (Level 3)

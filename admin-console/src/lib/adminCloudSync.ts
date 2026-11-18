@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * AdminCloudSync: Operaciones administrativas en Firestore compartido entre
- * el Repositorio Administrativo Independiente (lab-studio-admin) y el
- * Repositorio Educativo (lab-studio-edu).
+ * el Repositorio Administrativo Independiente (allin-studio-admin) y el
+ * Repositorio Educativo (allin-school-edu).
  */
 
 import type { User } from 'firebase/auth';
@@ -169,7 +169,7 @@ export function mapSnapshotToUserProfile(id: string, data: Record<string, unknow
   return {
     uid: typeof data.uid === 'string' ? data.uid : id,
     email: typeof data.email === 'string' ? data.email : '',
-    displayName: typeof data.displayName === 'string' ? data.displayName : 'Jugador GTO',
+    displayName: typeof data.displayName === 'string' ? data.displayName : 'Alumno Allin School',
     ...(typeof data.photoURL === 'string' ? { photoURL: data.photoURL } : {}),
     role,
     planTier,
@@ -498,7 +498,7 @@ export async function adminCreateOrUpdateManualUser(input: ManualUserInput): Pro
   if (!normalizedEmail || !normalizedEmail.includes('@')) {
     throw new Error('Ingresa un correo electrónico válido.');
   }
-  const safeName = clampString(input.displayName, 80, normalizedEmail.split('@')[0] || 'Jugador GTO');
+  const safeName = clampString(input.displayName, 80, normalizedEmail.split('@')[0] || 'Alumno Allin School');
   const cleanPerms: PlanPermissions = {
     labPro: Boolean(input.planPermissions.labPro),
     webBrain: Boolean(input.planPermissions.webBrain),
@@ -978,7 +978,7 @@ export async function fetchUserInvitesForAdmin(maxRows = 150): Promise<UserInvit
       return {
         id: d.id,
         email: String(data.email || ''),
-        displayName: String(data.displayName || 'Jugador GTO'),
+        displayName: String(data.displayName || 'Alumno Allin School'),
         role,
         planTier: tier,
         planActive: Boolean(data.planActive ?? true),
@@ -1107,8 +1107,8 @@ export async function adminCreateBillingTransaction(
   const cleanPeriod = clampString(input.billingPeriod, 16, new Date().toISOString().slice(0, 7));
   const payload = {
     userUid: clampString(input.userUid, 128, 'manual_tx').padEnd(4, '_'),
-    userEmail: clampString(input.userEmail, 160, 'alumno@labstudio.app').toLowerCase(),
-    userName: clampString(input.userName, 80, 'Jugador GTO'),
+    userEmail: clampString(input.userEmail, 160, 'alumno@allinschool.app').toLowerCase(),
+    userName: clampString(input.userName, 80, 'Alumno Allin School'),
     planTier: input.planTier,
     amountUsd: cleanAmount,
     currency: 'USD' as const,
@@ -1232,7 +1232,7 @@ export async function adminCreateAnnouncement(input: {
   const annId = sanitizeDocId(`ann-${Date.now()}-${Math.floor(Math.random() * 1000)}`);
   const path = `platformAnnouncements/${annId}`;
   const title = clampString(input.title, 90, 'Comunicado Oficial');
-  const message = clampString(input.message, 300, 'Actualización en Lab Studio.');
+  const message = clampString(input.message, 300, 'Actualización en Allin School.');
   const payload = {
     title: title.length >= 2 ? title : 'Aviso',
     message: message.length >= 4 ? message : 'Novedades disponibles en el Laboratorio.',
@@ -1360,8 +1360,8 @@ export async function adminCreateSupportTicket(input: {
   const description = clampString(input.description, 600, 'Nota administrativa.');
   const payload = {
     userUid: clampString(input.userUid, 128, actor.uid).padEnd(4, '_'),
-    userEmail: clampString(input.userEmail, 160, actor.email || 'admin@labstudio.app').toLowerCase(),
-    userName: clampString(input.userName, 80, 'Jugador GTO'),
+    userEmail: clampString(input.userEmail, 160, actor.email || 'admin@allinschool.app').toLowerCase(),
+    userName: clampString(input.userName, 80, 'Alumno Allin School'),
     subject: subject.length >= 2 ? subject : 'Ticket',
     description: description.length >= 4 ? description : 'Seguimiento',
     category: input.category,

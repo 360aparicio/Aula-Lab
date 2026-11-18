@@ -117,7 +117,7 @@ export const INITIAL_ROADMAP: RoadmapPhase[] = [
     id: 3,
     name: 'Fase 3: Habilidades Técnicas y Solvers',
     badge: 'NL10 - NL25',
-    description: 'Dominio de rangos GTO, cálculo mental de Pot Odds, SPR y juego posicional balanceado.',
+    description: 'Dominio de rangos Nash, cálculo mental de Pot Odds, SPR y juego posicional balanceado.',
     targetLevel: 'NL10 -> NL25',
     milestones: [
       { id: 'm3_1', text: 'Memorizar rangos de apertura RFI de las 6 posiciones de memoria.', done: false },
@@ -239,7 +239,7 @@ export const AcademyRoadmapDashboard: React.FC = () => {
       prompt: currentScenario.title,
       explanation: currentScenario.explanationDummies,
       rule: currentScenario.leakWarning,
-      context: `Hero: ${currentScenario.heroPos} vs ${currentScenario.villainPos} · Bote: ${currentScenario.potBB} BB · Frecuencia GTO: ${currentScenario.gtoFrequency}%`,
+      context: `Hero: ${currentScenario.heroPos} vs ${currentScenario.villainPos} · Bote: ${currentScenario.potBB} BB · Frecuencia Nash: ${currentScenario.gtoFrequency}%`,
       initialQuality: grade
     });
 
@@ -586,9 +586,9 @@ export const AcademyRoadmapDashboard: React.FC = () => {
           </div>
           <div>
             <h2 className="text-xl font-bold text-white flex items-center gap-2 flex-wrap">
-              <span>Academia de Póker Interactiva & Dashboard D3.js</span>
+              <span>Academia Allin School &amp; Dashboard D3.js</span>
               <span className="text-xs text-blue-400 font-mono">
-                · V4.2 Pro · NL02 ➔ NL100
+                · NL02 ➔ NL100
               </span>
             </h2>
             <p className="text-xs text-neutral-400 mt-0.5">
@@ -758,7 +758,7 @@ export const AcademyRoadmapDashboard: React.FC = () => {
                     <span>{isInfiniteQuizMode ? 'Quiz 30s + ELO: ON' : 'Quiz Infinito (30s)'}</span>
                   </button>
                   <span className="text-xs text-neutral-400 font-mono">
-                    Frec GTO: <strong className="text-emerald-400">{currentScenario.gtoFrequency}%</strong>
+                    Frec Nash: <strong className="text-emerald-400">{currentScenario.gtoFrequency}%</strong>
                   </span>
                 </div>
               </div>
@@ -869,7 +869,7 @@ export const AcademyRoadmapDashboard: React.FC = () => {
                         {hasAnswered && (
                           <div className="text-[10px] mt-1 font-mono">
                             {opt.isCorrect ? (
-                              <span className="text-emerald-400 font-bold">✓ GTO Óptimo (0% EV Loss)</span>
+                              <span className="text-emerald-400 font-bold">✓ Equilibrio Óptimo (0% EV Loss)</span>
                             ) : (
                               <span className="text-red-400">✗ -{opt.evLossPct}% EV Loss</span>
                             )}
@@ -887,7 +887,7 @@ export const AcademyRoadmapDashboard: React.FC = () => {
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-2 text-xs font-bold text-amber-400 uppercase tracking-wide">
                       <Brain className="w-4 h-4" />
-                      <span>Explicación Paso a Paso para Dummies:</span>
+                      <span>Explicación Clara Paso a Paso:</span>
                     </div>
 
                     <div className="flex items-center gap-2">

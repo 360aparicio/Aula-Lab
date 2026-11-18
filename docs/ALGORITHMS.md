@@ -1,4 +1,4 @@
-# GTO Studio — Mathematical Algorithms & Formulations
+# Lab Studio — Mathematical Algorithms & Formulations (Allin Studio)
 
 ## 1. Discounted Counterfactual Regret Minimization (DCFR)
 
@@ -24,7 +24,7 @@ $$\sigma^t(I, a) = \frac{\max(0, R^t(I, a))}{\sum_{b \in A(I)} \max(0, R^t(I, b)
 If the denominator is 0, a uniform distribution $\frac{1}{|A(I)|}$ is selected.
 
 ### Final Average Strategy
-The output GTO strategy $\bar{\sigma}(I, a)$ is:
+The output Nash Equilibrium strategy $\bar{\sigma}(I, a)$ is:
 $$\bar{\sigma}(I, a) = \frac{S(I, a)}{\sum_{b \in A(I)} S(I, b)}$$
 
 ## 2. 7-Card Hand Evaluator

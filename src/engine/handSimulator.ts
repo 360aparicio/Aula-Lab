@@ -964,7 +964,7 @@ export function applyHeroDecision(
   const explanationDummies =
     chosenOption.id === recommended.id
       ? `¡Decisión exacta! Con ${strength.label} (~${strength.equityPct}% equity) y SPR ${spr}, ${recommended.label} maximiza el EV en ${SCENARIO_META[state.scenario].shortLabel}.`
-      : `La línea GTO preferida era ${recommended.label} (${recommended.gtoFreqPct}% freq). Tu elección (${chosenOption.label}) cede ~${evLossBB} BB (${evLossPctPot}% del bote).`;
+      : `La línea Nash preferida era ${recommended.label} (${recommended.gtoFreqPct}% freq). Tu elección (${chosenOption.label}) cede ~${evLossBB} BB (${evLossPctPot}% del bote).`;
 
   const exploitativeNote =
     state.villainArchetype === 'Fish'

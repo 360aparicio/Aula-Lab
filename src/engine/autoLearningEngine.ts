@@ -52,7 +52,7 @@ export interface PlayerLearningProfile {
   totalMistakes: number; // >3% EV loss
   averageEvLossPct: number;
   masteryScore: number; // 0 to 100
-  styleProfile: 'Demasiado Pasivo' | 'Demasiado Agresivo' | 'Ligeramente Desbalanceado' | 'GTO Sólido';
+  styleProfile: 'Demasiado Pasivo' | 'Demasiado Agresivo' | 'Ligeramente Desbalanceado' | 'Nash Sólido';
   leakCategoryCounts: Record<string, number>;
   primaryLeak: {
     title: string;
@@ -76,12 +76,12 @@ function createFreshProfile(): PlayerLearningProfile {
     totalMistakes: 0,
     averageEvLossPct: 0,
     masteryScore: 80,
-    styleProfile: 'GTO Sólido',
+    styleProfile: 'Nash Sólido',
     leakCategoryCounts: {},
     primaryLeak: {
       title: 'Calibración Personal Iniciada',
       description: 'Tu perfil privado está listo. A medida que decidas manos en Paso a Paso, Práctica o Evaluaciones, el motor detectará tus fugas reales automáticamente.',
-      prescriptiveFix: 'Completa una evaluación por niveles o juega 5 manos en Práctica para recibir tu primera guía GTO personalizada.',
+      prescriptiveFix: 'Completa una evaluación por niveles o juega 5 manos en Práctica para recibir tu primera guía Nash personalizada.',
       impact: 'Media'
     },
     liveTipForCurrentSpot: 'Tu perfil está limpio: cada mano que practiques calibrará tus recomendaciones en tiempo real.',
@@ -270,7 +270,7 @@ export class AutoLearningEngine {
     const newMastery = Math.round(accuracyPct * 0.7 + (100 - Math.min(100, newAverageEvLoss * 10)) * 0.3);
 
     // Determine style profile
-    let style: PlayerLearningProfile['styleProfile'] = 'GTO Sólido';
+    let style: PlayerLearningProfile['styleProfile'] = 'Nash Sólido';
     if (newAverageEvLoss > 8.0) {
       style = 'Demasiado Pasivo';
     } else if (newAverageEvLoss > 4.5) {
@@ -380,7 +380,7 @@ export class AutoLearningEngine {
         answer: `Acción Óptima: ${hand.optimalAction} (Tu elección fue: "${hand.chosenAction}" con pérdida de EV: ${hand.evLossPct.toFixed(1)}%).`,
         category: hand.category,
         situationContext: `Calle: ${hand.street.toUpperCase()} · Posiciones: Hero (${hand.heroPos}) vs Villano (${hand.villainPos}) · Bote: ${hand.potBB} BB`,
-        keyRule: hand.keyTakeaway || 'Aplica la regla de oro GTO para esta textura y tamaño de bote.',
+        keyRule: hand.keyTakeaway || 'Aplica la regla de equilibrio Nash para esta textura y tamaño de bote.',
         intervalDays: 1,
         repetitions: 0,
         easeFactor: 2.5,

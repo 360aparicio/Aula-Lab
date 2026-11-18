@@ -2,10 +2,10 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  *
- * V3.9 Beta / V4.0 Pro Engine Tests:
+ * Allin School / Lab Studio Engine Tests:
  * - HandSimulator (9 scenarios including Multiway, no card collisions, showdown, UID isolation)
- * - PT4Engine (multi-format parsing, exact deduplication, 4-series cumulative graph, HUD stats, JSON template)
- * - DiagnosticEngine (Live 100-Hand Challenge & PT4 DB level/archetype/drill diagnosis)
+ * - TheTracker2Engine (multi-format parsing, exact deduplication, 4-series cumulative graph, HUD stats, JSON template)
+ * - DiagnosticEngine (Live 100-Hand Challenge & TheTracker2 DB level/archetype/drill diagnosis)
  */
 
 import { clearMemoryUserStorage, setActiveStorageUserUid } from '../src/lib/userStorage';
@@ -20,23 +20,23 @@ import {
   type SimScenarioType
 } from '../src/engine/handSimulator';
 import {
-  appendHandsToDatabase,
-  buildPT4ChartSeries,
+  appendHandsToTracker2Database,
+  buildTracker2ChartSeries,
   computeHudStats,
   DEFAULT_HUD_TEMPLATE,
-  exportPT4BackupZip,
+  exportTracker2BackupZip,
   filterHands,
   generateSampleSessionHands,
   getHandActionSteps,
   HUD_PRESETS,
-  importPT4BackupFromBytes,
-  loadPT4Databases,
+  importTracker2BackupFromBytes,
+  loadTracker2Databases,
   parseHandHistoriesText,
   parseHudTemplateJson
-} from '../src/engine/pt4Engine';
+} from '../src/engine/theTracker2Engine';
 import {
   buildDiagnosticFromLiveChallenge,
-  buildDiagnosticFromPT4Hands
+  buildDiagnosticFromTracker2Hands
 } from '../src/engine/diagnosticEngine';
 import { buildArchetypeNodeLocks, DCFRSolver } from '../src/engine/dcfr';
 import { buildGameTree, DEFAULT_TREE_CONFIG, getAllActionNodes } from '../src/engine/gameTree';
@@ -116,17 +116,17 @@ export async function runV39ProTests(): Promise<{ passed: number; failed: number
   setActiveStorageUserUid('v39_tester_uid');
   assert(loadLiveChallengeState().completedHands === 20, 'Tester UID keeps 20 completed challenge hands');
 
-  // 4. PT4Engine parsing, deduplication & 4-series cumulative chart
-  const dbs = loadPT4Databases();
-  assert(dbs.length === 1, 'Initial PT4 user starts with 1 DB');
+  // 4. TheTracker2Engine parsing, deduplication & 4-series cumulative chart
+  const dbs = loadTracker2Databases();
+  assert(dbs.length === 1, 'Initial TheTracker2 user starts with 1 DB');
   const dbId = dbs[0].id;
   const sample250 = generateSampleSessionHands(250, 'unitbatch');
   assert(sample250.length === 250, 'Demo generator creates 250 hands');
 
-  const firstImport = appendHandsToDatabase(dbId, sample250, 'demo.txt');
+  const firstImport = appendHandsToTracker2Database(dbId, sample250, 'demo.txt');
   assert(firstImport.addedCount === 250 && firstImport.duplicateCount === 0, 'First import adds 250 unique hands');
 
-  const secondImport = appendHandsToDatabase(dbId, sample250, 'demo.txt');
+  const secondImport = appendHandsToTracker2Database(dbId, sample250, 'demo.txt');
   assert(secondImport.addedCount === 0 && secondImport.duplicateCount === 250, 'Second import skips all 250 duplicates');
 
   const parsedText = parseHandHistoriesText(
@@ -134,7 +134,7 @@ export async function runV39ProTests(): Promise<{ passed: number; failed: number
   );
   assert(parsedText.length === 1 && parsedText[0].handKey === '999888777', 'Parses raw PokerStars hand text accurately');
 
-  const series = buildPT4ChartSeries(filterHands(secondImport.databases[0].hands, 'ALL'));
+  const series = buildTracker2ChartSeries(filterHands(secondImport.databases[0].hands, 'ALL'));
   assert(series.length === 251, 'Chart series includes origin + 250 hands');
   const hud = computeHudStats(secondImport.databases[0].hands);
   assert(hud.hands === 250 && hud.vpip > 0 && hud.pfr > 0, 'HUD stats computed properly');
@@ -153,14 +153,14 @@ export async function runV39ProTests(): Promise<{ passed: number; failed: number
   );
 
   // 5. DiagnosticEngine report checks
-  const pt4Diag = buildDiagnosticFromPT4Hands(secondImport.databases[0].hands, 'Test DB');
-  assert(pt4Diag.positionalBreakdown.length === 6, 'Diagnostic evaluates all 6 positions UTG..BB');
-  assert(pt4Diag.improvementPlan.length >= 1, 'Diagnostic builds actionable drill improvement plan');
+  const tracker2Diag = buildDiagnosticFromTracker2Hands(secondImport.databases[0].hands, 'Test DB');
+  assert(tracker2Diag.positionalBreakdown.length === 6, 'Diagnostic evaluates all 6 positions UTG..BB');
+  assert(tracker2Diag.improvementPlan.length >= 1, 'Diagnostic builds actionable drill improvement plan');
 
   const liveDiag = buildDiagnosticFromLiveChallenge(loadLiveChallengeState());
   assert(liveDiag.source === 'live_100', 'Live diagnostic builds cleanly');
 
-  // 6. V4.1 Pro: Preflop street hand + table preset + plainEnglishTip
+  // 6. Preflop street hand + table preset + plainEnglishTip
   const preHand = createSimulatedHand({
     handNumber: 1,
     positionFilter: 'BTN',
@@ -177,7 +177,7 @@ export async function runV39ProTests(): Promise<{ passed: number; failed: number
     'Preflop transition reveals 3 Flop cards and plainEnglishTip'
   );
 
-  // 7. V4.1 Pro: Seat button position inference, Euro blinds & true All-In EV calculation
+  // 7. Seat button position inference, Euro blinds & true All-In EV calculation
   const euroHand = parseHandHistoriesText(
     `PokerStars Hand #888777666: Hold'em No Limit (€0.05/€0.10 EUR)
 Table 'Madrid' 6-max Seat #3 is the button
@@ -205,10 +205,10 @@ BTNHero collected €2.15 from pot`
       euroHand[0].villainCardsStr === 'Kc Qd' &&
       euroHand[0].evAdjustedBB > 0 &&
       euroHand[0].netWonBB > 0,
-    'PT4 parser detects Seat #3 button pos (BTN), € blinds, and real AA vs KK equity EV'
+    'TheTracker2 parser detects Seat #3 button pos (BTN), € blinds, and real AA vs KK equity EV'
   );
 
-  // 8. V4.1 Pro: DCFR Solver with Rake %, Multi-Street Runout Equity, and Node-Locking
+  // 8. DCFR Solver with Rake %, Multi-Street Runout Equity, and Node-Locking
   const testBoard = ['As', '7d', '2c'].map(parseCard);
   const testTree = buildGameTree({ ...DEFAULT_TREE_CONFIG, street: 'flop', betSizes: [0.5] });
   const oopC = getRangeActiveCombos(parseRangeString('AA,KK,QQ', 'OOP'), testBoard);
@@ -232,7 +232,7 @@ BTNHero collected €2.15 from pot`
     'DCFRSolver honors Rake %, simulateFutureStreets, and exploitative Node-Locking'
   );
 
-  // 9. V4.2: Chronological PT4 Street-by-Street Replayer with Dynamic Pot & Pot Odds
+  // 9. Chronological TheTracker2 Street-by-Street Replayer with Dynamic Pot & Pot Odds
   const replayParse = parseHandHistoriesText(
     `PokerStars Hand #777666555: Hold'em No Limit ($0.05/$0.10 USD)
 Table 'Madrid' 6-max Seat #3 is the button
@@ -263,10 +263,10 @@ BTNHero collected $1.10 from pot`
       callFlopStep!.potOddsPct !== null &&
       callFlopStep!.boardSoFar === 'Ah 7d 2c' &&
       turnDealStep?.boardSoFar === 'Ah 7d 2c Ks',
-    'PT4 Replayer parses Preflop->Flop->Turn progressive board, dynamic pot BB, and exact Pot Odds'
+    'TheTracker2 Replayer parses Preflop->Flop->Turn progressive board, dynamic pot BB, and exact Pot Odds'
   );
 
-  // 10. V4.2: Multi-Street GameTree (Flop -> Turn -> River) + Mixed Percentage Node-Locking & Archetype Presets
+  // 10. Multi-Street GameTree (Flop -> Turn -> River) + Mixed Percentage Node-Locking & Archetype Presets
   const multiTree = buildGameTree({
     ...DEFAULT_TREE_CONFIG,
     street: 'flop',
@@ -297,16 +297,16 @@ BTNHero collected $1.10 from pot`
   const overfoldLocks = buildArchetypeNodeLocks(multiTree, 'overfold_cbet');
   assert(Object.keys(overfoldLocks).length > 0, 'Archetype node-lock preset populates multiple facing-bet nodes');
 
-  // 11. V4.2: Portable ZIP Backup Export/Import roundtrip with deduplication
-  const zipBundle = await exportPT4BackupZip();
+  // 11. Portable ZIP Backup Export/Import roundtrip with deduplication
+  const zipBundle = await exportTracker2BackupZip();
   const zipBytes = new Uint8Array(await zipBundle.blob.arrayBuffer());
-  const restoreRes = await importPT4BackupFromBytes(zipBundle.filename, zipBytes);
+  const restoreRes = await importTracker2BackupFromBytes(zipBundle.filename, zipBytes);
   assert(
     restoreRes.addedHands === 0 && restoreRes.duplicateHands >= 250,
     'Portable ZIP backup restores cleanly and skips exact duplicate hands across devices'
   );
 
-  // 12. V4.2: 60s Onboarding Persistence + Plain-Spanish Weekly Leaks Radar
+  // 12. 60s Onboarding Persistence + Plain-Spanish Weekly Leaks Radar
   resetOnboardingState();
   assert(loadOnboardingState().completed === false, 'Onboarding resets cleanly per UID');
   saveOnboardingState({ completed: true, dismissed: false, goal: 'analyze_hands', completedAt: Date.now() });

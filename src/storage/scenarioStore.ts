@@ -2,7 +2,7 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  * 
- * Local persistence, scenario schema validation, import/export JSON for GTO Studio.
+ * Local persistence, scenario schema validation, import/export JSON for Lab Studio.
  */
 
 import { PREBUILT_SCENARIOS, PrebuiltScenario } from '../trainer/prebuiltScenarios';
@@ -85,7 +85,7 @@ export function deleteScenario(id: string): boolean {
 export function exportScenariosToJson(scenarios?: SavedScenarioRecord[]): string {
   const data = scenarios || loadAllScenarios();
   return JSON.stringify({
-    format: 'GTO_STUDIO_SCENARIOS',
+    format: 'LAB_STUDIO_SCENARIOS',
     version: '1.0.0',
     exportedAt: new Date().toISOString(),
     scenarios: data

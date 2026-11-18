@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * EvaluationModule: Centro Educativo Personalizado por Niveles (NL2 -> NL100),
- * Banco de 720+ Preguntas Sin Repetición (240+ por cada tipo) y Resultados Visuales "Para Dummies".
+ * Banco de 720+ Preguntas Sin Repetición (240+ por cada tipo) y Resultados Visuales Claros.
  */
 
 import React, { useState, useMemo } from 'react';
@@ -449,7 +449,7 @@ export const EvaluationModule: React.FC = () => {
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-lg font-bold text-white">
-                  Centro Educativo Personalizado &amp; Evaluaciones GTO
+                  Centro Educativo Personalizado &amp; Evaluaciones Allin School
                 </h3>
                 <span className="text-[11px] font-mono px-2.5 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-500/40">
                   {bankCounts.total} Preguntas Únicas Sin Repetición
@@ -777,7 +777,7 @@ export const EvaluationModule: React.FC = () => {
                     className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white outline-none"
                   >
                     <option value="all">Mixto (Todos)</option>
-                    <option value="regular">Regular (GTO)</option>
+                    <option value="regular">Regular (Equilibrado)</option>
                     <option value="nit">Nit Pasivo</option>
                     <option value="fish">Calling Station (Fish)</option>
                     <option value="lag">LAG Agresivo</option>
@@ -1006,7 +1006,7 @@ export const EvaluationModule: React.FC = () => {
                 {/* Visual Replay Cards for Every Single Hand */}
                 <div className="space-y-4">
                   <h5 className="text-xs font-bold uppercase tracking-wider text-neutral-400">
-                    Recuerdo Visual Mano a Mano y Explicación Para Dummies ({answers.length} Manos)
+                    Recuerdo Visual Mano a Mano y Explicación Clara ({answers.length} Manos)
                   </h5>
 
                   {answers.map((ans, idx) => {
@@ -1104,7 +1104,7 @@ export const EvaluationModule: React.FC = () => {
 
                           <div className="p-3 rounded-xl border bg-neutral-950 border-emerald-700/50">
                             <span className="text-[10px] uppercase font-mono text-neutral-400 block">
-                              Lo Correcto (Matemática GTO):
+                              Lo Correcto (Matemática Nash):
                             </span>
                             <strong className="text-emerald-300">
                               {ans.question.correctAction} · Tamaño {ans.question.correctSizing} (Frec:{' '}
@@ -1113,11 +1113,11 @@ export const EvaluationModule: React.FC = () => {
                           </div>
                         </div>
 
-                        {/* Para Dummies Explanation + Rule of Thumb */}
+                        {/* Plain-Language Explanation + Rule of Thumb */}
                         <div className="p-3.5 bg-neutral-950 border border-neutral-800 rounded-xl space-y-2 text-xs">
                           <div className="flex items-center gap-1.5 text-amber-300 font-bold">
                             <Brain className="w-4 h-4 shrink-0" />
-                            <span>Explicación Simple (Para Dummies):</span>
+                            <span>Explicación Simple:</span>
                           </div>
                           <p className="text-neutral-200 leading-relaxed">{ans.question.explanationDummies}</p>
                           <div className="pt-1.5 border-t border-neutral-800/70 flex flex-wrap items-center justify-between gap-2 text-[11px]">

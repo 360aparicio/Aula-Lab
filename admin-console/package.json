@@ -1,9 +1,9 @@
 {
-  "name": "lab-studio-admin",
+  "name": "allin-studio-admin",
   "private": true,
-  "version": "3.5.0",
+  "version": "1.0.0",
   "type": "module",
-  "description": "Repositorio Independiente de Administración SaaS, Planes, Secciones, Beneficios, Analítica D3.js y RBAC para Lab Studio.",
+  "description": "Repositorio Independiente de Administración SaaS Allin Studio Admin para Allin School: Planes, Secciones, Beneficios, Analítica D3.js y RBAC.",
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build",

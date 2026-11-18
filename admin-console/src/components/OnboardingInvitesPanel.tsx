@@ -88,7 +88,7 @@ export const OnboardingInvitesPanel: React.FC<OnboardingInvitesPanelProps> = ({
 
   const handleCopyInstructions = async (inv: UserInviteEntry) => {
     const resolvedLabUrl = labUrl.startsWith('http') ? labUrl : `${window.location.origin}${labUrl}`;
-    const msg = `Hola ${inv.displayName}, tu acceso a Lab Studio (${inv.planTier.toUpperCase()}) está listo. Entra en ${resolvedLabUrl} usando tu cuenta Google (${inv.email}) y tu plan se activará automáticamente.`;
+    const msg = `Hola ${inv.displayName}, tu acceso a Allin School (${inv.planTier.toUpperCase()}) está listo. Entra en ${resolvedLabUrl} usando tu cuenta Google (${inv.email}) y tu plan se activará automáticamente.`;
     try {
       await navigator.clipboard.writeText(msg);
       setCopiedId(inv.id);

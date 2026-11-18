@@ -1,6 +1,6 @@
-# Lab Studio · Consola Administrativa Independiente (`lab-studio-admin` V3.5)
+# Allin Studio Admin · Consola Administrativa Independiente (`allin-studio-admin`)
 
-Repositorio **100% independiente** del Aula Educativo (`lab-studio-edu`), conectado en tiempo real mediante **Firebase Auth + Cloud Firestore** compartido.
+Repositorio **100% independiente** del Aula Educativa **Allin School** (`allin-school-edu`), conectado en tiempo real mediante **Firebase Auth + Cloud Firestore** compartido.
 
 ## Capacidades Principales
 1. **Planes, Secciones & Beneficios (`/planConfigs/{free|pro|elite}`):**

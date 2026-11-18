@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * AdminAuthContext: Autenticación Zero-Trust exclusiva del Repositorio Administrativo
- * Independiente (lab-studio-admin). Rechaza automáticamente cuentas sin permiso Admin activo.
+ * Independiente (allin-studio-admin). Rechaza automáticamente cuentas sin permiso Admin activo.
  */
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';

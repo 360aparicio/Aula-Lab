@@ -2,7 +2,7 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  *
- * Root App Component for Independent Admin Repository (lab-studio-admin).
+ * Root App Component for Independent Admin Repository (allin-studio-admin).
  */
 
 import React from 'react';

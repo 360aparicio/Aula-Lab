@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * SolverMetaStore (Admin Repo): Almacén del conocimiento auto-actualizable
- * de estrategias GTO, tendencias Web e inteligencia colectiva.
+ * de estrategias Nash (Lab Studio), tendencias Web e inteligencia colectiva.
  */
 
 import fs from 'node:fs';

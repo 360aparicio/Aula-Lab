@@ -1433,8 +1433,8 @@ export async function submitStudentSupportTicket(
   try {
     await setDoc(doc(db, 'supportTickets', ticketId), {
       userUid: user.uid,
-      userEmail: clampString(user.email, 160, 'jugador@labstudio.app').toLowerCase(),
-      userName: clampString(user.displayName, 80, 'Jugador GTO'),
+      userEmail: clampString(user.email, 160, 'alumno@allinschool.app').toLowerCase(),
+      userName: clampString(user.displayName, 80, 'Alumno Allin School'),
       subject: cleanSubject,
       description: cleanDescription,
       category: input.category,

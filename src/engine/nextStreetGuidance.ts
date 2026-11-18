@@ -2,7 +2,7 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  * 
- * Next Street GTO Guidance Engine & Runout Analyzer.
+ * Next Street Nash Guidance Engine & Runout Analyzer.
  * Analyzes board textures, street transitions (Flop -> Turn -> River),
  * runout impact categories, and generates human-readable tactical plans.
  */

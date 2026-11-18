@@ -2,8 +2,8 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  *
- * ProgressDashboard: Dashboard de Progreso D3.js V3.1 Pro con Radar Chart,
- * Gráfica de Barras Agrupadas vs Benchmark GTO, Gráfica Horizontal de Hitos de Carrera
+ * ProgressDashboard: Dashboard de Progreso D3.js con Radar Chart,
+ * Gráfica de Barras Agrupadas vs Benchmark Nash, Gráfica Horizontal de Hitos de Carrera
  * sincronizada en vivo y Exportación de Auditoría Pedagógica en PDF.
  */
 
@@ -64,7 +64,7 @@ function readRoadmapPhases(): RoadmapPhaseSummary[] {
   const defaultPhases: RoadmapPhaseSummary[] = [
     { id: 1, name: 'Fase 1: Bankroll', doneCount: 0, totalCount: 4, pct: 0 },
     { id: 2, name: 'Fase 2: Juego Mental', doneCount: 0, totalCount: 4, pct: 0 },
-    { id: 3, name: 'Fase 3: Técnica GTO', doneCount: 0, totalCount: 4, pct: 0 },
+    { id: 3, name: 'Fase 3: Técnica Nash', doneCount: 0, totalCount: 4, pct: 0 },
     { id: 4, name: 'Fase 4: Datos NL100', doneCount: 0, totalCount: 4, pct: 0 }
   ];
 
@@ -83,7 +83,7 @@ function readRoadmapPhases(): RoadmapPhaseSummary[] {
       const shortName = phase.name
         .replace('Gestión de Bankroll y Micro-Límites', 'Bankroll')
         .replace('Juego Mental y Control de Tilt', 'Juego Mental')
-        .replace('Habilidades Técnicas y Solvers', 'Técnica GTO')
+        .replace('Habilidades Técnicas y Solvers', 'Técnica Nash')
         .replace('Revisión de Datos & Ascenso a NL50 - NL100', 'Datos NL100');
       return {
         id: phase.id,
@@ -392,10 +392,10 @@ export const ProgressDashboard: React.FC = () => {
           </div>
           <div>
             <h2 className="text-xl font-bold text-white print:text-black">
-              Auditoría Analítica D3.js & Radar GTO
+              Auditoría Analítica D3.js &amp; Radar Nash
             </h2>
             <p className="text-xs text-neutral-400 print:text-neutral-600 mt-0.5">
-              Comparativa en tiempo real frente al equilibrio GTO, fugas capturadas y progreso de carrera NL02 → NL100.
+              Comparativa en tiempo real frente al equilibrio Nash, fugas capturadas y progreso de carrera NL02 → NL100.
             </p>
           </div>
         </div>
@@ -473,7 +473,7 @@ export const ProgressDashboard: React.FC = () => {
                 <span className="w-2.5 h-2.5 rounded-xs bg-blue-500 inline-block" /> Hero
               </span>
               <span className="flex items-center gap-1 text-emerald-400">
-                <span className="w-2.5 h-2.5 rounded-xs bg-emerald-500 inline-block" /> Meta GTO
+                <span className="w-2.5 h-2.5 rounded-xs bg-emerald-500 inline-block" /> Meta Nash
               </span>
             </div>
           </div>
@@ -482,13 +482,13 @@ export const ProgressDashboard: React.FC = () => {
 
         <div className="lg:col-span-7 bg-neutral-950 border border-neutral-800 rounded-2xl p-5 flex flex-col">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-bold text-white">Precisión Hero vs Benchmark GTO (12 Categorías)</h3>
+            <h3 className="text-sm font-bold text-white">Precisión Hero vs Benchmark Nash (12 Categorías)</h3>
             <div className="flex items-center gap-3 text-[10px] font-mono">
               <span className="flex items-center gap-1 text-blue-400">
                 <span className="w-2.5 h-2.5 rounded-xs bg-blue-500 inline-block" /> Tu Precisión
               </span>
               <span className="flex items-center gap-1 text-emerald-400">
-                <span className="w-2.5 h-2.5 rounded-xs bg-emerald-500/60 inline-block" /> Objetivo GTO
+                <span className="w-2.5 h-2.5 rounded-xs bg-emerald-500/60 inline-block" /> Objetivo Nash
               </span>
             </div>
           </div>

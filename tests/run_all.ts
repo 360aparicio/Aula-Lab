@@ -2,7 +2,7 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  * 
- * Master Test Runner for GTO Studio Engine & Mathematics.
+ * Master Test Runner for Allin School · Lab Studio Engine & Mathematics.
  */
 
 import { runEvaluatorTests } from './evaluator.test';
@@ -16,7 +16,7 @@ import { runGtoAuditTests } from './gto_audit.test';
 
 async function runAll() {
   console.log('====================================================');
-  console.log('       GTO STUDIO MATHEMATICAL & ENGINE SUITE       ');
+  console.log('     ALLIN SCHOOL MATHEMATICAL & ENGINE SUITE       ');
   console.log('====================================================\n');
 
   let totalPassed = 0;
@@ -30,8 +30,8 @@ async function runAll() {
     { name: 'Kuhn Poker Nash Reference', fn: runKuhnTests },
     { name: 'Discounted CFR (DCFR) Subgame Solver', fn: runDCFRTests },
     { name: 'Per-User Isolation & Non-Repeating Pools', fn: runPersonalizationTests },
-    { name: 'V3.9 Pro Simulator, PT4 & Diagnostic Suite', fn: runV39ProTests },
-    { name: 'V4.2 World-Class GTO Mathematical Audit Suite', fn: runGtoAuditTests },
+    { name: 'Allin School Simulator, TheTracker2 & Diagnostic Suite', fn: runV39ProTests },
+    { name: 'Lab Studio Nash Mathematical Audit Suite', fn: runGtoAuditTests },
   ];
 
   for (const suite of suites) {

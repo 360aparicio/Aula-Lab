@@ -536,7 +536,11 @@ function LabWorkspace() {
     const mappedHero: TablePosition = hand.heroPos;
     const mappedVillain: TablePosition = mappedHero === 'BB' ? 'BTN' : 'BB';
     const mappedAction: PreflopActionContext =
-      hand.potType === '4Bet' ? '4BET' : hand.potType === '3Bet' ? '3BET' : 'RFI';
+      hand.potType === '4Bet' || hand.potType === '3Bet'
+        ? (hand.threeBet ? 'HERO_3BET' : 'FACING_3BET')
+        : hand.heroPos === 'BB' && !hand.pfr
+          ? 'FACING_OPEN'
+          : 'RFI';
     setHeroPos(mappedHero);
     setVillainPos(mappedVillain);
     setPreflopAction(mappedAction);

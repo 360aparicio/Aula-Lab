@@ -1,4 +1,4 @@
-# GTO Studio — Performance Benchmarks & Convergence Metrics
+# Lab Studio — Performance Benchmarks & Convergence Metrics
 
 ## 1. Mathematical Benchmarks
 

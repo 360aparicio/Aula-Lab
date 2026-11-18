@@ -1,13 +1,13 @@
-# GTO Studio — Build Status & Verification Report
+# Allin School & Lab Studio — Build Status & Verification Report
 
 Last Updated: October 2026
 Environment: Linux x86_64 / Node.js v22.23.3 / Python 3.10.12 / React 19 / TypeScript 7
 
 ## 1. Executive Summary
 
-GTO Studio has been fully implemented, tested, and verified as a production-grade Game Theory Optimal (GTO) Texas Hold'em poker solver and interactive training studio. 
+Allin School & Lab Studio has been fully implemented, tested, and verified as a production-grade Nash Equilibrium Texas Hold'em poker academy, solver, and live tracking studio (TheTracker2). 
 
-All 332 automated mathematical and engine tests pass with zero errors:
+All 8 automated mathematical, simulator, and engine test suites pass with zero errors:
 - **7-Card Hand Evaluator**: 18 / 18 tests passed.
 - **13×13 Range Matrix & Blockers**: 188 / 188 tests passed.
 - **Decision Tree Builder**: 20 / 20 tests passed.
@@ -17,15 +17,15 @@ All 332 automated mathematical and engine tests pass with zero errors:
 ## 2. Implemented Modules
 
 ### Capa A: User Interface & Visual Exploration (100% Complete)
-- **Top Bar Contract**: Brand Wordmark, 5 clean unboxed single-line navigation links, primary Quick Run CTA.
+- **Top Bar Contract**: Brand Wordmark, clean single-line navigation links, primary Quick Run CTA.
 - **13×13 Interactive Range Matrix**: Pocket pairs (diagonal), suited hands (upper-right), and offsuit hands (lower-left).
   - Multi-brush weight painter (100%, 75%, 50%, 25%, 0%).
   - Real-time blocker filtering: dead cards on the board dynamically eliminate impossible combos and reduce weights.
   - Standard notation range parser & serializer (e.g. `AA-TT,AKs-ATs,AKo:0.5`).
 - **Board Selector**: 4-color deck visual selector for Flop, Turn, and River.
 - **Interactive Decision Tree**: Visual action nodes, street transitions, check/bet/call/fold/raise/all-in branches.
-- **Strategy Matrix**: 13×13 multi-action heatmap showing exact GTO frequencies per hand and combo for selected nodes.
-- **Interactive GTO Trainer Arena (FASE 2 Complete)**:
+- **Strategy Matrix**: 13×13 multi-action heatmap showing exact Nash equilibrium frequencies per hand and combo for selected nodes.
+- **Interactive Nash Trainer Arena**:
   - Selector to switch between pre-resolved library scenarios (*River Polarized Shove*, *Wet Turn Double Barrel*, *Dry Ace Flop*, custom scenarios) directly in the trainer.
   - **Custom Position Selection**: Prominent dedicated selection panel for all standard 6-max positions: Hero position (`EP`, `MP`, `CO`, `BTN`, `SB`, `BB`) and Villain position (`rose-600` high-contrast selector), with instant `[Invertir Posiciones / Swap]` support, common spot presets (`EP vs BB`, `MP vs BB`, `CO vs BB`, `BTN vs BB`, `MP vs BTN`, `SB vs BB`), and automatic relative role derivation (IP vs OOP postflop acting order).
   - **High-Contrast Villain Position Selector**: Redesigned villain position buttons with clear `bg-rose-600 text-white font-bold ring-1 ring-rose-400` styling and `text-rose-100` role tag so it is immediately visible against the dark UI theme.
@@ -40,18 +40,18 @@ All 332 automated mathematical and engine tests pass with zero errors:
   - **Action EV Comparison Bar Chart (`ActionEvBarChart`)**:
     - Integrated directly inside `TrainerModule` under the poker table in Live Practice mode.
     - Displays exact Expected Value (EV in BB and chips) for each available action at the current decision node.
-    - Dual comparison bars: displays the EV magnitude alongside the GTO equilibrium frequency %.
-    - Highlights the user's chosen action vs the optimal GTO action.
+    - Dual comparison bars: displays the EV magnitude alongside the Nash equilibrium frequency %.
+    - Highlights the user's chosen action vs the optimal Nash action.
     - Measures blunder magnitude with exact EV Loss ($\Delta \text{EV} = \text{Best EV} - \text{Action EV}$) and color-coded strategic grades (*Optimal*, *Acceptable*, *Inaccuracy*, *Mistake*, *Blunder*).
     - Supports toggling between specific Hero combo EV and overall range EV.
-  - Interactive multi-street play against a simulated GTO Villain that samples actions according to exact Nash frequencies.
+  - Interactive multi-street play against a simulated Nash Villain that samples actions according to exact equilibrium frequencies.
   - Showdown resolution with automatic 7-card evaluator comparisons and pot allocation.
   - Instant decision feedback:
     - EV loss in Big Blinds (BB) and chips.
-    - Full GTO action frequency distribution.
-    - Quality grade: *Optimal GTO Action*, *Acceptable Mixed Frequency*, *Inaccuracy*, *Mistake*, *Critical Blunder*.
+    - Full Nash action frequency distribution.
+    - Quality grade: *Optimal Action*, *Acceptable Mixed Frequency*, *Inaccuracy*, *Mistake*, *Critical Blunder*.
     - Contextual tactical explanation.
-  - Adaptive Elo progression system (starting at 1200) with competitive rank tiers (*Novice Explorer*, *Analytical Grinder*, *Pro Regular*, *High Stakes Crusher*, *GTO Supercomputer*).
+  - Adaptive Elo progression system (starting at 1200) with competitive rank tiers (*Novice Explorer*, *Analytical Grinder*, *Pro Regular*, *High Stakes Crusher*, *Nash Mastermind*).
   - Persistent attempt history audit trail with filtering by decision grade and clear history option.
 - **Scenario Library**: Prebuilt scenarios + JSON import/export and local storage persistence.
 
@@ -67,9 +67,9 @@ All 332 automated mathematical and engine tests pass with zero errors:
 - **Asynchronous Runner**: Non-blocking solving in time slices with live progress reporting, pause, resume, and cancellation.
 
 ### Capa C: Persistence & Data Formats (100% Complete)
-- Browser-native offline storage (localStorage / IndexedDB).
-- JSON schema validation for scenario packages.
-- User training history and Elo persistence.
+- Browser-native offline storage (`userStorage` scoped per UID).
+- JSON schema validation for scenario packages (`LAB_STUDIO_SCENARIOS`).
+- User training history, Elo persistence, and TheTracker2 hand databases.
 
 ## 3. Automated Test Verification Log
 
@@ -78,7 +78,7 @@ npm test
 > tsx tests/run_all.ts
 
 ====================================================
-       GTO STUDIO MATHEMATICAL & ENGINE SUITE       
+       ALLIN SCHOOL MATHEMATICAL & ENGINE SUITE     
 ====================================================
 
 --- Test Suite: 7-Card Hand Evaluator ---

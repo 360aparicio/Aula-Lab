@@ -1,4 +1,4 @@
-# Security Specification & Red Team Spec — Lab Studio V3.4 Pro
+# Security Specification & Red Team Spec — Allin Studio (Allin School & Admin)
 
 ## Data Invariants
 1. **Zero-Trust Identity Integrity & Plan-Admin Authorization:** Every `/users/{userId}` document belongs strictly to `request.auth.uid == userId` (or is a pre-provisioned `isManualPlaceholder` doc created by an active verified Admin). Only the bootstrapped verified admin (`360aparicio@gmail.com`), `/admins/{uid}`, or active verified accounts explicitly granted the Admin option (`users/{uid}.role == 'admin' && planActive == true`) hold Tier-1 administrative privileges.

@@ -1027,7 +1027,7 @@ export const ACADEMY_SCENARIO_BANK: Record<AcademyCategory, QuizScenario[]> = {
         { label: 'Fold', action: 'FOLD', isCorrect: false, evLossPct: 4.5 },
         { label: 'All-in 100 BB', action: 'ALLIN', isCorrect: false, evLossPct: 26.0 }
       ],
-      explanationDummies: 'Para que nuestro Limp Re-Raise con AA/KK reciba acción, el rango GTO incluye Ases bajos suited (A2s-A5s) como faroles balanceados con bloqueador.',
+      explanationDummies: 'Para que nuestro Limp Re-Raise con AA/KK reciba acción, el equilibrio Nash incluye Ases bajos suited (A2s-A5s) como faroles balanceados con bloqueador.',
       leakWarning: 'Fuga Común: Tener un rango de Limp Re-Raise 100% compuesto solo por AA.'
     },
     {
