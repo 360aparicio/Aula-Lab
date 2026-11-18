@@ -42,7 +42,11 @@ import { buildArchetypeNodeLocks, DCFRSolver } from '../src/engine/dcfr';
 import { buildGameTree, DEFAULT_TREE_CONFIG, getAllActionNodes } from '../src/engine/gameTree';
 import { parseCard } from '../src/engine/cards';
 import { getRangeActiveCombos, parseRangeString } from '../src/engine/range';
+import { computeICM, ICM_PRESETS } from '../src/engine/icmEngine';
+import { computeRangeEquityMonteCarlo } from '../src/engine/evaluator';
+import { SolverLRUCache, MAX_SOLVER_CACHE_ENTRIES } from '../src/engine/solverRunner';
 import {
+  advanceDailyMissionsSnapshot,
   buildWeeklyLeaksRadar,
   loadOnboardingState,
   resetOnboardingState,
@@ -313,6 +317,78 @@ BTNHero collected $1.10 from pot`
   assert(loadOnboardingState().goal === 'analyze_hands', 'Onboarding goal persists per UID');
   const weeklyRadar = buildWeeklyLeaksRadar();
   assert(Array.isArray(weeklyRadar) && weeklyRadar.length <= 3, 'Weekly Leaks Radar builds up to 3 prioritized leaks');
+
+  // 13. Malmuth-Harville ICM Conservation, 2-Player Analytical Formula & Bubble Factor
+  const huIcm = computeICM([7500, 4500], [650, 350]);
+  const expectedP0 = (7500 / 12000) * 650 + (4500 / 12000) * 350;
+  assert(
+    Math.abs(huIcm.players[0].icmEquity - expectedP0) < 0.05 &&
+      Math.abs(huIcm.players[0].icmEquity + huIcm.players[1].icmEquity - 1000) < 0.05,
+    'Malmuth-Harville 2-player ICM matches analytical expectation and conserves 100% of prize pool'
+  );
+  const bubblePreset = ICM_PRESETS[1];
+  const bubbleIcm = computeICM(bubblePreset.stacks, bubblePreset.payouts, bubblePreset.names);
+  const icmSum = bubbleIcm.players.reduce((s, p) => s + p.icmEquity, 0);
+  assert(
+    Math.abs(icmSum - bubbleIcm.totalPrizePool) < 0.5 &&
+      bubbleIcm.players[0].icmEquity > bubbleIcm.players[1].icmEquity &&
+      bubbleIcm.players[1].icmEquity > bubbleIcm.players[2].icmEquity &&
+      bubbleIcm.bubbleFactorMatrix[1][0] > 1.0,
+    '4-Max Bubble ICM preserves prize pool, respects stack monotonicity, and computes Bubble Factor > 1.0'
+  );
+
+  // 14. Monte Carlo 7-Card Range vs Range Equity
+  const aaCombos = [{ cards: [parseCard('As'), parseCard('Ah')] as [ReturnType<typeof parseCard>, ReturnType<typeof parseCard>], weight: 1 }];
+  const kkCombos = [{ cards: [parseCard('Ks'), parseCard('Kh')] as [ReturnType<typeof parseCard>, ReturnType<typeof parseCard>], weight: 1 }];
+  const dryFlop = [parseCard('9c'), parseCard('5d'), parseCard('2s')];
+  const eqMc = computeRangeEquityMonteCarlo(aaCombos, kkCombos, dryFlop, 400);
+  assert(
+    eqMc.samplesEvaluated > 100 &&
+      eqMc.oopEquityPct > 78 &&
+      Math.abs(eqMc.oopEquityPct + eqMc.ipEquityPct - 100) < 0.25,
+    `Monte Carlo 7-card Range Equity gives AA > 78% vs KK on 952r (got ${eqMc.oopEquityPct}%)`
+  );
+
+  // 15. SolverLRUCache bounded capacity & LRU eviction
+  const lru = new SolverLRUCache(3);
+  const fakeSolve = (tag: number) => ({
+    iterationsRun: tag,
+    elapsedMs: 1,
+    averageExploitability: 0,
+    nodeStrategies: new Map(),
+    p1EV: 0,
+    p2EV: 0
+  });
+  lru.set('k1', fakeSolve(1));
+  lru.set('k2', fakeSolve(2));
+  lru.set('k3', fakeSolve(3));
+  lru.get('k1'); // touch k1 so k2 becomes LRU
+  lru.set('k4', fakeSolve(4)); // evicts k2
+  assert(
+    MAX_SOLVER_CACHE_ENTRIES === 64 &&
+      lru.size() === 3 &&
+      lru.get('k1')?.fromCache === true &&
+      lru.get('k2') === undefined &&
+      lru.get('k4')?.iterationsRun === 4,
+    'SolverLRUCache evicts least-recently-used entry and preserves touched entries'
+  );
+
+  // 16. Daily Missions Streak Continuity across multi-day gaps
+  const day1 = {
+    streakDays: 6,
+    bestStreakDays: 6,
+    lastActiveDate: '2026-10-01',
+    missions: []
+  };
+  const nextConsecutive = advanceDailyMissionsSnapshot(day1, '2026-10-02');
+  const afterGap = advanceDailyMissionsSnapshot(nextConsecutive, '2026-10-05');
+  assert(
+    nextConsecutive.streakDays === 7 &&
+      nextConsecutive.bestStreakDays === 7 &&
+      afterGap.streakDays === 1 &&
+      afterGap.bestStreakDays === 7,
+    'Daily streak increments on consecutive days and resets to 1 after multi-day gap while preserving bestStreakDays'
+  );
 
   return { passed, failed, errors };
 }

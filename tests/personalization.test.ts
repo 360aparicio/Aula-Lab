@@ -13,15 +13,23 @@ import { SpacedRepetitionManager } from '../src/engine/spacedRepetition';
 import { LearnerService } from '../src/engine/learner';
 import { AutoLearningEngine } from '../src/engine/autoLearningEngine';
 import {
+  MASTER_EVALUATION_BANK,
   generateNonRepeatingExam,
   getBankCountsByMode,
   loadSeenQuestionIds,
-  markQuestionIdsSeen
+  markQuestionIdsSeen,
+  resetEvaluationSessionHistory
 } from '../src/engine/evaluationBank';
 import {
   ACADEMY_SCENARIO_BANK,
-  getNextAcademyScenario
+  getNextAcademyScenario,
+  resetAcademySessionHistory,
+  type AcademyCategory
 } from '../src/engine/academySpots';
+import {
+  buildSimulatedHandFingerprint,
+  createSimulatedHand
+} from '../src/engine/handSimulator';
 import {
   dealRandomHeroHand,
   loadTrainerStats,
@@ -236,6 +244,153 @@ export function runPersonalizationTests(): { passed: number; failed: number; err
   assert(
     picked !== null && picked.combo.key === remainingExpected,
     `dealRandomHeroHand excludes recently dealt combos (expected ${remainingExpected}, got ${picked?.combo.key})`
+  );
+
+  // 5. Cross-mode evaluation non-repetition within the same session & card safety
+  setActiveStorageUserUid('cross_mode_eval_tester');
+  resetEvaluationSessionHistory('cross_mode_eval_tester');
+  for (const q of MASTER_EVALUATION_BANK) {
+    const qCardIds = [...q.heroCards.map(c => c.id), ...q.board.map(c => c.id)];
+    if (new Set(qCardIds).size !== qCardIds.length) {
+      assert(false, `Card collision detected in MASTER_EVALUATION_BANK question ${q.id}`);
+    }
+  }
+  passed++; // All MASTER_EVALUATION_BANK card collision checks clean
+
+  const crossModeIds: string[] = [];
+  for (const m of ['levels', 'fixed', 'variable'] as const) {
+    const exam = generateNonRepeatingExam(m, 2, {
+      potType: 'all',
+      texture: 'all',
+      opponent: 'all',
+      level: 'all',
+      questionCount: 12
+    });
+    markQuestionIdsSeen(m, exam.questions.map(q => q.id));
+    exam.questions.forEach(q => crossModeIds.push(q.id));
+    const maxPoolConcepts = new Set(
+      MASTER_EVALUATION_BANK.filter(q => (m === 'levels' ? q.level === 2 : true)).map(q => q.conceptTag)
+    ).size;
+    const distinctConcepts = new Set(exam.questions.map(q => q.conceptTag));
+    assert(
+      distinctConcepts.size >= Math.min(maxPoolConcepts, exam.questions.length),
+      `Exam mode "${m}" maximizes conceptTag variety (${distinctConcepts.size}/${Math.min(maxPoolConcepts, exam.questions.length)} max distinct concepts in ${exam.questions.length} Qs)`
+    );
+  }
+  assert(
+    new Set(crossModeIds).size === crossModeIds.length,
+    `Zero repeated evaluation questions across consecutive levels+fixed+variable exams in same session (${new Set(crossModeIds).size}/${crossModeIds.length})`
+  );
+
+  // 6. Complete Academy 12-category audit: zero card collisions, full non-repeating session cycle, suit permutations
+  setActiveStorageUserUid('academy_audit_tester');
+  resetAcademySessionHistory('academy_audit_tester');
+  const allCats = Object.keys(ACADEMY_SCENARIO_BANK) as AcademyCategory[];
+  assert(allCats.length === 12, `ACADEMY_SCENARIO_BANK covers all 12 categories (found=${allCats.length})`);
+
+  let totalSpotsAudited = 0;
+  for (const cat of allCats) {
+    const catPool = ACADEMY_SCENARIO_BANK[cat];
+    assert(catPool.length >= 8, `Category ${cat} has ${catPool.length} (>= 8) unique spots`);
+    for (const sc of catPool) {
+      totalSpotsAudited++;
+      const cardIds = [...sc.heroCards.map(c => c.id), ...sc.board.map(c => c.id)];
+      assert(
+        new Set(cardIds).size === cardIds.length,
+        `Academy spot ${sc.id} has zero hero/board card collisions`
+      );
+      assert(
+        sc.options.some(o => o.isCorrect),
+        `Academy spot ${sc.id} has a valid optimal option`
+      );
+    }
+
+    const cycleIds: string[] = [];
+    const cycleSuitSignatures = new Set<string>();
+    let prevId: string | undefined;
+    for (let i = 0; i < catPool.length; i++) {
+      const dealtSpot = getNextAcademyScenario(cat, prevId);
+      const dealtCards = [...dealtSpot.heroCards.map(c => c.id), ...dealtSpot.board.map(c => c.id)];
+      assert(
+        new Set(dealtCards).size === dealtCards.length,
+        `Permuted Academy spot ${dealtSpot.id} preserves zero card collisions`
+      );
+      cycleIds.push(dealtSpot.id);
+      cycleSuitSignatures.add(dealtSpot.heroCards.map(c => c.suit).join(''));
+      prevId = dealtSpot.id;
+    }
+    assert(
+      new Set(cycleIds).size === catPool.length,
+      `Academy ${cat} deals all ${catPool.length} unique spots with 0 repeats in a session cycle`
+    );
+    assert(
+      cycleSuitSignatures.size >= 2,
+      `Academy ${cat} applies varied isomorphic suit permutations (${cycleSuitSignatures.size} suit pairs)`
+    );
+  }
+  assert(totalSpotsAudited >= 96, `Total curated Academy base scenarios >= 96 (found=${totalSpotsAudited})`);
+
+  // 7. Live 6-Max Simulator randomness, rotation, and session non-repetition across 45 consecutive hands
+  const simRecentKeys: string[] = [];
+  const simFingerprints = new Set<string>();
+  const simScenarios = new Set<string>();
+  const simPositions = new Set<string>();
+  const simCanonicals = new Set<string>();
+
+  for (let h = 1; h <= 45; h++) {
+    const hand = createSimulatedHand({
+      handNumber: h,
+      positionFilter: 'RANDOM',
+      scenarioFilter: 'RANDOM',
+      recentKeys: simRecentKeys
+    });
+    const fp = buildSimulatedHandFingerprint({
+      scenario: hand.scenario,
+      heroPos: hand.heroPos,
+      heroCards: hand.heroCards,
+      fullRunout: hand.fullRunout
+    });
+    simRecentKeys.push(fp);
+    simFingerprints.add(fp);
+    simScenarios.add(hand.scenario);
+    simPositions.add(hand.heroPos);
+
+    const r1 = hand.heroCards[0].rank;
+    const r2 = hand.heroCards[1].rank;
+    const suited = hand.heroCards[0].suit === hand.heroCards[1].suit ? 's' : r1 === r2 ? '' : 'o';
+    simCanonicals.add([r1, r2].sort().join('') + suited);
+
+    const tableCardIds = new Set<number>();
+    hand.fullRunout.forEach(c => tableCardIds.add(c.id));
+    let activeSeatCards = 0;
+    hand.seats.forEach(s => {
+      if (s.inHand && s.holeCards) {
+        tableCardIds.add(s.holeCards[0].id);
+        tableCardIds.add(s.holeCards[1].id);
+        activeSeatCards += 2;
+      }
+    });
+    assert(
+      tableCardIds.size === 5 + activeSeatCards,
+      `Simulated hand #${h} has 0 card collisions across table & runout`
+    );
+  }
+
+  assert(
+    simFingerprints.size === 45,
+    `Live simulator deals 45/45 distinct hand fingerprints in one session (unique=${simFingerprints.size})`
+  );
+  assert(
+    simScenarios.size >= 7,
+    `Live simulator RANDOM mode rotates across scenarios (${simScenarios.size}/9 scenarios hit)`
+  );
+  assert(
+    simPositions.size >= 5,
+    `Live simulator RANDOM mode rotates across positions (${simPositions.size}/6 positions hit)`
+  );
+  assert(
+    simCanonicals.size >= 16,
+    `Live simulator deals genuinely varied starting hands (${simCanonicals.size} distinct canonical combos in 45 hands)`
   );
 
   setActiveStorageUserUid(null);

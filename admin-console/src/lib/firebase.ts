@@ -20,12 +20,16 @@ import {
 import {
   getFirestore,
   doc,
-  getDocFromServer
+  getDocFromServer,
+  type Firestore
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
+export const db: Firestore = firebaseConfig.firestoreDatabaseId
+  ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
+  : getFirestore(app);
 export const auth = getAuth(app);
 void setPersistence(auth, browserLocalPersistence).catch(() => {});
 export const authRedirectPromise: Promise<UserCredential | null> = getRedirectResult(auth).catch(() => null);
@@ -85,16 +89,28 @@ export function handleFirestoreError(
 }
 
 async function testConnection(): Promise<void> {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return;
+  }
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error) {
     if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error('Please check your Firebase configuration.');
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      try {
+        await getDocFromServer(doc(db, 'test', 'connection'));
+      } catch (retryError) {
+        if (retryError instanceof Error && retryError.message.includes('the client is offline')) {
+          console.error('Please check your Firebase configuration.');
+        }
+      }
     }
   }
 }
 
-void testConnection();
+if (typeof window !== 'undefined') {
+  void testConnection();
+}
 
 export function mapAuthErrorToSpanish(err: unknown): string {
   const code = typeof err === 'object' && err !== null && 'code' in err ? String((err as { code: unknown }).code) : '';

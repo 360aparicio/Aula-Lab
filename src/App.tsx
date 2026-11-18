@@ -8,10 +8,12 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Card, parseCard } from './engine/cards';
-import { DCFRConfig, DEFAULT_DCFR_CONFIG, NodeStrategyResult, SolveResult } from './engine/dcfr';
+import { cryptoRandomInt } from './lib/random';
+import { DCFRConfig, DEFAULT_DCFR_CONFIG, NodeStrategyResult } from './engine/dcfr';
+import { computeRangeEquityMonteCarlo } from './engine/evaluator';
 import { ActionNode, buildGameTree, DEFAULT_TREE_CONFIG, getAllActionNodes, TreeConfig } from './engine/gameTree';
 import { getRangeActiveCombos, parseRangeString, PlayerRange } from './engine/range';
-import { AsyncSolverRunner, SolverProgress } from './engine/solverRunner';
+import { AsyncSolverRunner, CachedSolveResult, SolverProgress } from './engine/solverRunner';
 import { PREBUILT_SCENARIOS, PrebuiltScenario } from './trainer/prebuiltScenarios';
 
 import { Header, NavTab } from './components/Header';
@@ -43,6 +45,7 @@ import { useAuth } from './context/AuthContext';
 import { LoginScreen } from './components/LoginScreen';
 import { PlanBenefitsModal } from './components/PlanBenefitsModal';
 import { SupportTicketModal } from './components/SupportTicketModal';
+import { LegalNoticeModal } from './components/LegalNoticeModal';
 import { FundamentalsModule } from './components/FundamentalsModule';
 import { Onboarding60sBanner } from './components/OnboardingAndLeaksBar';
 import { LAB_SECTION_META } from './lib/planCatalog';
@@ -60,7 +63,7 @@ import {
 import { db, handleFirestoreError, OperationType } from './lib/firebase';
 import { collection, limit, onSnapshot, query, where } from 'firebase/firestore';
 
-import { Play, Pause, Square, SlidersHorizontal, Compass, Lock, Crown, Megaphone, X, Sparkles } from 'lucide-react';
+import { Play, Pause, Square, SlidersHorizontal, Compass, Lock, Crown, Megaphone, X, Sparkles, Scale } from 'lucide-react';
 
 interface LiveAnnouncementBanner {
   id: string;
@@ -112,6 +115,7 @@ function LabWorkspace() {
   } | null>(null);
   const [showPlanBenefitsModal, setShowPlanBenefitsModal] = useState<boolean>(false);
   const [showSupportModal, setShowSupportModal] = useState<boolean>(false);
+  const [showLegalModal, setShowLegalModal] = useState<boolean>(false);
   const [announcements, setAnnouncements] = useState<LiveAnnouncementBanner[]>([]);
   const [dismissedAnnIds, setDismissedAnnIds] = useState<string[]>([]);
   const [onboardingState, setOnboardingState] = useState<OnboardingState>(() => loadOnboardingState());
@@ -203,9 +207,17 @@ function LabWorkspace() {
   // Solver Runner
   const runnerRef = useRef<AsyncSolverRunner | null>(null);
   const [solverProgress, setSolverProgress] = useState<SolverProgress | null>(null);
-  const [solveResult, setSolveResult] = useState<SolveResult | null>(null);
+  const [solveResult, setSolveResult] = useState<CachedSolveResult | null>(null);
   const [solverError, setSolverError] = useState<string | null>(null);
   const [showConfigPanel, setShowConfigPanel] = useState<boolean>(false);
+
+  // Monte Carlo Range vs Range Equity for Rangos 13x13 tab (computed only when active)
+  const rangeEquity = useMemo(() => {
+    if (activeTab !== 'ranges') return null;
+    const oopList = oopCombos.map(c => ({ cards: [c.combo.card1, c.combo.card2] as [Card, Card], weight: c.weight }));
+    const ipList = ipCombos.map(c => ({ cards: [c.combo.card1, c.combo.card2] as [Card, Card], weight: c.weight }));
+    return computeRangeEquityMonteCarlo(oopList, ipList, boardCards, 600);
+  }, [activeTab, oopCombos, ipCombos, boardCards]);
 
   useEffect(() => {
     runnerRef.current = new AsyncSolverRunner();
@@ -430,10 +442,10 @@ function LabWorkspace() {
 
     const fresh = combos.filter(c => !excluded.has(`${c.combo.card1.id}-${c.combo.card2.id}`));
     const pool = fresh.length > 0 ? fresh : combos;
-    const chosen = pool[Math.floor(Math.random() * pool.length)];
+    const chosen = pool[cryptoRandomInt(pool.length)];
     const chosenKey = `${chosen.combo.card1.id}-${chosen.combo.card2.id}`;
     recentRandomCardKeysRef.current = [
-      ...recentRandomCardKeysRef.current.filter(k => k !== chosenKey).slice(-9),
+      ...recentRandomCardKeysRef.current.filter(k => k !== chosenKey),
       chosenKey
     ];
     setHeroCards([chosen.combo.card1, chosen.combo.card2]);
@@ -677,6 +689,16 @@ function LabWorkspace() {
       <SupportTicketModal
         open={showSupportModal}
         onClose={() => setShowSupportModal(false)}
+      />
+
+      {/* Bilingual Legal, IP (Decisión 351) & Habeas Data (Ley 1581) Modal */}
+      <LegalNoticeModal
+        open={showLegalModal}
+        onClose={() => setShowLegalModal(false)}
+        onOpenSupport={() => {
+          setShowLegalModal(false);
+          setShowSupportModal(true);
+        }}
       />
 
       {/* Main Workspace Viewport */}
@@ -1059,8 +1081,10 @@ function LabWorkspace() {
                 {solveResult && (
                   <div className="p-4 bg-neutral-900 border border-neutral-800 rounded-xl flex items-center justify-between text-xs font-mono">
                     <div className="space-y-0.5">
-                      <div className="text-neutral-400">Resumen de Convergencia Ideal:</div>
-                      <div className="text-emerald-400 font-bold">
+                      <div className="text-neutral-400">
+                        Resumen de Convergencia Ideal{solveResult.fromCache ? ' · Caché LRU instantáneo' : ''}:
+                      </div>
+                      <div className="text-emerald-400 font-bold tabular-nums">
                         {solveResult.iterationsRun} Iteraciones en {solveResult.elapsedMs}ms
                       </div>
                     </div>
@@ -1116,6 +1140,33 @@ function LabWorkspace() {
                 </span>
               )}
             </div>
+
+            {/* Range vs Range Monte Carlo Equity Bar */}
+            {rangeEquity && (
+              <div className="p-4 bg-neutral-950 border border-neutral-800 rounded-xl space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-mono tabular-nums">
+                  <span className="text-blue-300 font-bold">
+                    OOP Equity: {rangeEquity.oopEquityPct.toFixed(1)}% ({oopCombos.length} combos)
+                  </span>
+                  <span className="text-neutral-400">
+                    Monte Carlo 7-Cartas · {rangeEquity.samplesEvaluated} simulaciones (Empate: {rangeEquity.tiePct.toFixed(1)}%)
+                  </span>
+                  <span className="text-emerald-400 font-bold">
+                    IP Equity: {rangeEquity.ipEquityPct.toFixed(1)}% ({ipCombos.length} combos)
+                  </span>
+                </div>
+                <div className="w-full h-2.5 rounded-full bg-neutral-900 overflow-hidden flex border border-neutral-800">
+                  <div
+                    style={{ width: `${rangeEquity.oopEquityPct}%` }}
+                    className="h-full bg-blue-500 transition-all duration-200"
+                  />
+                  <div
+                    style={{ width: `${rangeEquity.ipEquityPct}%` }}
+                    className="h-full bg-emerald-500 transition-all duration-200"
+                  />
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <RangeMatrix13x13
@@ -1241,6 +1292,31 @@ function LabWorkspace() {
           </>
         )}
       </main>
+
+      <footer className="border-t border-neutral-900 bg-neutral-950/80 py-4 px-4 sm:px-6 mb-14 md:mb-0">
+        <div className="max-w-[1440px] mx-auto flex flex-wrap items-center justify-between gap-3 text-[11px] text-neutral-500">
+          <span>
+            <strong className="text-neutral-300">ALLin Studio · Allin School</strong> — Plataforma estrictamente educativa y analítica de Teoría de Juegos 6-Max (sin apuestas ni dinero real).
+          </span>
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={() => setShowLegalModal(true)}
+              className="flex items-center gap-1.5 text-neutral-400 hover:text-white transition-colors cursor-pointer"
+            >
+              <Scale className="w-3.5 h-3.5 text-blue-400" />
+              <span>Marco Legal (Decisión 351 · Ley 1581 Habeas Data)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowSupportModal(true)}
+              className="text-neutral-400 hover:text-white transition-colors cursor-pointer"
+            >
+              Soporte &amp; Habeas Data
+            </button>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

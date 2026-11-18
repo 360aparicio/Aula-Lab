@@ -24,6 +24,8 @@ import {
   getActiveTracker2DatabaseId,
   type Tracker2Database
 } from '../engine/theTracker2Engine';
+import { AutoLearningEngine } from '../engine/autoLearningEngine';
+import { incrementMissionProgress } from '../lib/experienceMode';
 import { WeeklyLeaksRadarCard } from './OnboardingAndLeaksBar';
 import {
   Activity,
@@ -33,7 +35,8 @@ import {
   Compass,
   RefreshCw,
   Database,
-  Play
+  Play,
+  Bookmark
 } from 'lucide-react';
 
 interface LevelDiagnosticPanelProps {
@@ -54,6 +57,7 @@ export const LevelDiagnosticPanel: React.FC<LevelDiagnosticPanelProps> = ({
     return 'live_100';
   });
   const [refreshNonce, setRefreshNonce] = useState(0);
+  const [savedSm2Ids, setSavedSm2Ids] = useState<Record<string, boolean>>({});
 
   const resolvedTracker2Db = useMemo(() => {
     void refreshNonce;
@@ -350,14 +354,45 @@ export const LevelDiagnosticPanel: React.FC<LevelDiagnosticPanelProps> = ({
                   </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => onLaunchDrill(item.drillPos, item.drillScenario)}
-                  className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-colors cursor-pointer"
-                >
-                  <Play className="w-3.5 h-3.5 fill-current" />
-                  <span>Lanzar Drill</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onLaunchDrill(item.drillPos, item.drillScenario)}
+                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    <Play className="w-3.5 h-3.5 fill-current" />
+                    <span>Lanzar Drill</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      AutoLearningEngine.getInstance().collectHand({
+                        heroPos: item.drillPos === 'RANDOM' ? 'BTN' : item.drillPos,
+                        villainPos: 'BB',
+                        heroCards: 'A♠ Q♠',
+                        board: 'K♦ 9♣ 4♥',
+                        street: 'flop',
+                        category: item.area,
+                        potBB: 6,
+                        chosenAction: item.problem,
+                        optimalAction: item.actionStep,
+                        evLossPct: item.priority === 'Alta' ? 8.5 : item.priority === 'Media' ? 5.0 : 2.5,
+                        isMistake: item.priority === 'Alta' || item.priority === 'Media',
+                        keyTakeaway: `${item.area}: ${item.actionStep}`
+                      });
+                      incrementMissionProgress('m-sm2', 1);
+                      setSavedSm2Ids(prev => ({ ...prev, [item.id]: true }));
+                    }}
+                    className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                      savedSm2Ids[item.id]
+                        ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
+                        : 'bg-neutral-900 hover:bg-neutral-800 border-neutral-800 text-emerald-300'
+                    }`}
+                  >
+                    <Bookmark className="w-3.5 h-3.5" />
+                    <span>{savedSm2Ids[item.id] ? 'Guardado ✓' : 'SM-2'}</span>
+                  </button>
+                </div>
               </div>
             );
           })}

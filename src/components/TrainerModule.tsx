@@ -211,7 +211,7 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
     if (!dealtHero) return;
 
     recentHeroKeysRef.current = [
-      ...recentHeroKeysRef.current.filter(k => k !== dealtHero.combo.key).slice(-9),
+      ...recentHeroKeysRef.current.filter(k => k !== dealtHero.combo.key),
       dealtHero.combo.key
     ];
 

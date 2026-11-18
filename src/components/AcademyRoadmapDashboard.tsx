@@ -35,6 +35,7 @@ import {
 } from '../engine/academySpots';
 import { auth } from '../lib/firebase';
 import { readScopedItem, writeScopedItem } from '../lib/userStorage';
+import { cryptoShuffle } from '../lib/random';
 import { loadEvaluationStats } from './EvaluationModule';
 import {
   GraduationCap,
@@ -308,6 +309,16 @@ export const AcademyRoadmapDashboard: React.FC = () => {
       setHasAnswered(true);
       setQuizStreak(0);
       setQuizElo(prev => Math.max(800, prev - 15));
+      setCategoryStats(prev => {
+        const current = prev[currentScenario.category] || { attempts: 0, correct: 0 };
+        return {
+          ...prev,
+          [currentScenario.category]: {
+            attempts: current.attempts + 1,
+            correct: current.correct
+          }
+        };
+      });
       AutoLearningEngine.getInstance().collectHand({
         heroPos: currentScenario.heroPos,
         villainPos: currentScenario.villainPos,
@@ -410,11 +421,7 @@ export const AcademyRoadmapDashboard: React.FC = () => {
     let nextCat: AcademyCategory = activeCategory;
     if (isInfiniteQuizMode) {
       if (quizCategoryDeckRef.current.length === 0) {
-        const shuffled = CATEGORIES.map(c => c.id);
-        for (let i = shuffled.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-        }
+        const shuffled = cryptoShuffle(CATEGORIES.map(c => c.id));
         // Avoid repeating the immediate last category when starting a new cycle
         if (shuffled.length > 1 && shuffled[shuffled.length - 1] === activeCategory) {
           [shuffled[0], shuffled[shuffled.length - 1]] = [shuffled[shuffled.length - 1], shuffled[0]];
@@ -479,13 +486,13 @@ export const AcademyRoadmapDashboard: React.FC = () => {
     const svg = d3.select(chartRef.current);
     svg.selectAll('*').remove();
 
-    const width = 520;
-    const height = 240;
-    const margin = { top: 20, right: 15, bottom: 50, left: 45 };
+    const width = 640;
+    const height = 265;
+    const margin = { top: 20, right: 16, bottom: 72, left: 42 };
     const innerWidth = width - margin.left - margin.right;
     const innerHeight = height - margin.top - margin.bottom;
 
-    const data = CATEGORIES.slice(0, 7).map(c => {
+    const data = CATEGORIES.map(c => {
       const stat = categoryStats[c.id] || { attempts: 0, correct: 0 };
       const pct = stat.attempts > 0 ? Math.round((stat.correct / stat.attempts) * 100) : 0;
       return { name: c.label.replace('Flops ', '').replace('Flop ', ''), pct, attempts: stat.attempts };
@@ -494,7 +501,7 @@ export const AcademyRoadmapDashboard: React.FC = () => {
     const x = d3.scaleBand()
       .domain(data.map(d => d.name))
       .range([0, innerWidth])
-      .padding(0.28);
+      .padding(0.24);
 
     const y = d3.scaleLinear()
       .domain([0, 100])
@@ -517,10 +524,10 @@ export const AcademyRoadmapDashboard: React.FC = () => {
       .call(d3.axisBottom(x));
 
     xAxis.selectAll('text')
-      .attr('transform', 'rotate(-18)')
+      .attr('transform', 'rotate(-28)')
       .attr('text-anchor', 'end')
       .attr('fill', '#9ca3af')
-      .attr('font-size', '9px')
+      .attr('font-size', '8.5px')
       .attr('font-family', 'sans-serif');
 
     xAxis.select('.domain').attr('stroke', '#374151');
@@ -546,7 +553,7 @@ export const AcademyRoadmapDashboard: React.FC = () => {
       .attr('width', x.bandwidth())
       .attr('height', d => innerHeight - y(d.pct))
       .attr('rx', 4)
-      .attr('fill', d => (d.pct >= 75 ? '#3b82f6' : d.pct >= 55 ? '#f59e0b' : '#ef4444'))
+      .attr('fill', d => (d.attempts === 0 ? '#374151' : d.pct >= 75 ? '#3b82f6' : d.pct >= 55 ? '#f59e0b' : '#ef4444'))
       .attr('opacity', 0.95);
 
     // Value Labels
@@ -558,10 +565,10 @@ export const AcademyRoadmapDashboard: React.FC = () => {
       .attr('y', d => y(d.pct) - 4)
       .attr('text-anchor', 'middle')
       .attr('fill', '#ffffff')
-      .attr('font-size', '10px')
+      .attr('font-size', '9px')
       .attr('font-family', 'monospace')
       .attr('font-weight', 'bold')
-      .text(d => `${d.pct}%`);
+      .text(d => (d.attempts > 0 ? `${d.pct}%` : '—'));
 
   }, [categoryStats, activeSubTab]);
 
@@ -574,6 +581,50 @@ export const AcademyRoadmapDashboard: React.FC = () => {
       totalCorrect += s.correct;
     });
     return totalAttempts > 0 ? Math.round((totalCorrect / totalAttempts) * 100) : 0;
+  }, [categoryStats]);
+
+  // Dynamic Leak & Strength Summary (Zero hardcoded claims)
+  const liveDiagnostic = useMemo(() => {
+    const practiced = CATEGORIES.map(c => {
+      const stat = categoryStats[c.id] || { attempts: 0, correct: 0 };
+      const pct = stat.attempts > 0 ? Math.round((stat.correct / stat.attempts) * 100) : 0;
+      return { id: c.id, label: c.label, attempts: stat.attempts, correct: stat.correct, pct };
+    }).filter(x => x.attempts > 0);
+
+    const profile = AutoLearningEngine.getInstance().getProfile();
+    const totalAttempts = practiced.reduce((sum, item) => sum + item.attempts, 0);
+
+    if (totalAttempts === 0 && profile.totalDecisions === 0) {
+      return {
+        hasData: false,
+        strengthLabel: 'Esperando calibración inicial',
+        strengthDetail: 'Responde tus primeras manos en las 12 categorías para medir tu precisión real en cada textura.',
+        weaknessLabel: 'Sin fugas registradas todavía',
+        weaknessDetail: profile.primaryLeak.prescriptiveFix
+      };
+    }
+
+    const sortedDesc = [...practiced].sort((a, b) => b.pct - a.pct || b.attempts - a.attempts);
+    const strongest = sortedDesc[0];
+    const weakest = sortedDesc[sortedDesc.length - 1];
+
+    return {
+      hasData: true,
+      strengthLabel: strongest
+        ? `${strongest.label} (${strongest.pct}% en ${strongest.attempts} ${strongest.attempts === 1 ? 'mano' : 'manos'})`
+        : 'Ejecución inicial equilibrada',
+      strengthDetail: strongest && strongest.pct >= 75
+        ? `Precisión sólida en ${strongest.label}. Mantén la consistencia en frecuencias y sizings.`
+        : 'Sigue acumulando decisiones para consolidar ≥75% de dominio en tus categorías principales.',
+      weaknessLabel: weakest && weakest.pct < 75
+        ? `${weakest.label} (${weakest.pct}% en ${weakest.attempts} ${weakest.attempts === 1 ? 'mano' : 'manos'})`
+        : profile.primaryLeak.title,
+      weaknessDetail: profile.totalMistakes > 0
+        ? profile.primaryLeak.prescriptiveFix
+        : weakest && weakest.pct < 75
+        ? `Refuerza la teoría de ${weakest.label} y revisa los spots guardados en tu cola SM-2.`
+        : 'Cero errores graves (>3% EV) en la muestra actual. Sube el ritmo con Modo Quiz Infinito.'
+    };
   }, [categoryStats]);
 
   return (
@@ -592,7 +643,7 @@ export const AcademyRoadmapDashboard: React.FC = () => {
               </span>
             </h2>
             <p className="text-xs text-neutral-400 mt-0.5">
-              Simulador multi-mano (48 spots únicos), Módulo de Evaluación Fija/Variable, Auditoría D3 y Carrera en 4 Fases SM-2.
+              Simulador multi-mano (96+ spots base × permutación de palos), Evaluación Fija/Variable sin repetición, Auditoría D3 y Carrera SM-2.
             </p>
           </div>
         </div>
@@ -984,7 +1035,7 @@ export const AcademyRoadmapDashboard: React.FC = () => {
                 </div>
 
                 <div className="w-full flex justify-center">
-                  <svg ref={chartRef} viewBox="0 0 520 240" className="w-full h-auto" />
+                  <svg ref={chartRef} viewBox="0 0 640 265" className="w-full h-auto" />
                 </div>
 
                 <div className="text-[11px] text-neutral-500 text-center font-mono">
@@ -992,21 +1043,25 @@ export const AcademyRoadmapDashboard: React.FC = () => {
                 </div>
               </div>
 
-              {/* AI Diagnostic Report / Leak Summary */}
+              {/* AI Diagnostic Report / Live Computed Leak Summary */}
               <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 shadow-xl space-y-3">
                 <div className="flex items-center gap-2 text-xs font-bold text-amber-400 uppercase tracking-wider">
                   <Zap className="w-4 h-4" />
-                  <span>Reporte de Diagnóstico de Fugas (Auto-Aprendizaje IA):</span>
+                  <span>Reporte de Diagnóstico en Vivo (12 Categorías):</span>
                 </div>
 
                 <div className="space-y-2 text-xs">
                   <div className="p-2.5 bg-neutral-950 rounded-lg border border-neutral-800 text-neutral-300 leading-relaxed">
-                    <strong className="text-blue-400 block mb-0.5">Fortaleza Detectada:</strong>
-                    Excelente disciplina en <span className="text-white">Flops Secos y Emparejados</span>; aplicas C-bets del tamaño óptimo con alta frecuencia.
+                    <strong className="text-blue-400 block mb-0.5">
+                      Fortaleza: {liveDiagnostic.strengthLabel}
+                    </strong>
+                    {liveDiagnostic.strengthDetail}
                   </div>
                   <div className="p-2.5 bg-neutral-950 rounded-lg border border-neutral-800 text-neutral-300 leading-relaxed">
-                    <strong className="text-red-400 block mb-0.5">Fuga Crítica Detectada:</strong>
-                    Tendencia a jugar con sizing excesivo en <span className="text-white">Botes 3-Bet</span> y overplay en <span className="text-white">Flops Monótonos</span> sin blockers del palo.
+                    <strong className={`${liveDiagnostic.hasData ? 'text-red-400' : 'text-amber-400'} block mb-0.5`}>
+                      {liveDiagnostic.hasData ? 'Prioridad de Mejora:' : 'Estado Inicial:'} {liveDiagnostic.weaknessLabel}
+                    </strong>
+                    {liveDiagnostic.weaknessDetail}
                   </div>
                 </div>
               </div>

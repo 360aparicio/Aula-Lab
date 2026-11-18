@@ -430,7 +430,7 @@ export const TreeConfigPanel: React.FC<TreeConfigPanelProps> = ({
                     type="range"
                     min={0}
                     max={100}
-                    step={5}
+                    step={1}
                     value={pct}
                     aria-label={`Frecuencia mixta ${act.label}`}
                     onChange={(e) => handleSliderChange(actKey, parseInt(e.target.value, 10))}

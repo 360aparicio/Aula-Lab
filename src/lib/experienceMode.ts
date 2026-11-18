@@ -7,6 +7,9 @@
  */
 
 import { readScopedItem, writeScopedItem } from './userStorage';
+import { LearnerService } from '../engine/learner';
+import { loadLiveChallengeState, type SimPosition, type SimScenarioType } from '../engine/handSimulator';
+import { computeHudStats, getActiveTracker2DatabaseId, loadTracker2Databases } from '../engine/theTracker2Engine';
 
 export type ExperienceLevel = 'beginner' | 'recreational' | 'regular' | 'pro';
 
@@ -98,18 +101,27 @@ export interface DailyMissionItem {
 
 export interface DailyMissionsState {
   streakDays: number;
+  bestStreakDays?: number;
   lastActiveDate: string;
   missions: DailyMissionItem[];
 }
 
-function todayKey(): string {
-  return new Date().toISOString().slice(0, 10);
+function todayKey(now = Date.now()): string {
+  return new Date(now).toISOString().slice(0, 10);
 }
 
-function createFreshMissions(streakDays = 1): DailyMissionsState {
+export function daysBetweenUtcDates(prevYmd: string, curYmd: string): number {
+  const prevMs = Date.parse(`${prevYmd}T00:00:00Z`);
+  const curMs = Date.parse(`${curYmd}T00:00:00Z`);
+  if (!Number.isFinite(prevMs) || !Number.isFinite(curMs)) return 999;
+  return Math.round((curMs - prevMs) / (24 * 60 * 60 * 1000));
+}
+
+function createFreshMissions(streakDays = 1, bestStreakDays = streakDays, dateKey = todayKey()): DailyMissionsState {
   return {
     streakDays,
-    lastActiveDate: todayKey(),
+    bestStreakDays: Math.max(streakDays, bestStreakDays),
+    lastActiveDate: dateKey,
     missions: [
       {
         id: 'm-hands',
@@ -139,6 +151,24 @@ function createFreshMissions(streakDays = 1): DailyMissionsState {
   };
 }
 
+export function advanceDailyMissionsSnapshot(
+  parsed: DailyMissionsState,
+  currentYmd = todayKey()
+): DailyMissionsState {
+  if (parsed.lastActiveDate === currentYmd) {
+    return {
+      ...parsed,
+      bestStreakDays: Math.max(parsed.bestStreakDays || 1, parsed.streakDays || 1)
+    };
+  }
+  const diffDays = daysBetweenUtcDates(parsed.lastActiveDate, currentYmd);
+  const prevStreak = Math.max(1, parsed.streakDays || 1);
+  const prevBest = Math.max(prevStreak, parsed.bestStreakDays || 1);
+  // Consecutive calendar day -> increment streak; gap > 1 day -> reset cleanly to 1 preserving bestStreakDays
+  const nextStreak = diffDays === 1 ? prevStreak + 1 : 1;
+  return createFreshMissions(nextStreak, Math.max(prevBest, nextStreak), currentYmd);
+}
+
 export function loadDailyMissions(): DailyMissionsState {
   try {
     const raw = readScopedItem(MISSIONS_KEY);
@@ -147,17 +177,20 @@ export function loadDailyMissions(): DailyMissionsState {
       if (parsed && Array.isArray(parsed.missions)) {
         const today = todayKey();
         if (parsed.lastActiveDate !== today) {
-          const next = createFreshMissions((parsed.streakDays || 0) + 1);
+          const next = advanceDailyMissionsSnapshot(parsed, today);
           writeScopedItem(MISSIONS_KEY, JSON.stringify(next));
           return next;
         }
-        return parsed;
+        return {
+          ...parsed,
+          bestStreakDays: Math.max(parsed.bestStreakDays || 1, parsed.streakDays || 1)
+        };
       }
     }
   } catch {
     // ignore
   }
-  const fresh = createFreshMissions(1);
+  const fresh = createFreshMissions(1, 1);
   writeScopedItem(MISSIONS_KEY, JSON.stringify(fresh));
   return fresh;
 }
@@ -183,10 +216,6 @@ export function incrementMissionProgress(
   writeScopedItem(MISSIONS_KEY, JSON.stringify(next));
   return next;
 }
-
-import { LearnerService } from '../engine/learner';
-import { loadLiveChallengeState, type SimPosition, type SimScenarioType } from '../engine/handSimulator';
-import { computeHudStats, getActiveTracker2DatabaseId, loadTracker2Databases } from '../engine/theTracker2Engine';
 
 const ONBOARDING_KEY = 'lab_player_onboarding_60s_v1';
 

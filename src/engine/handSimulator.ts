@@ -13,6 +13,7 @@ import { evaluateCards } from './evaluator';
 import { analyzeBoardTexture } from './learner';
 import { AutoLearningEngine } from './autoLearningEngine';
 import { readScopedItem, writeScopedItem, removeScopedItem } from '../lib/userStorage';
+import { cryptoPick, cryptoRandomFloat, cryptoRandomInt, cryptoShuffle } from '../lib/random';
 import type { TablePosition } from '../components/HandAndPositionBar';
 
 const rankNum = (r: Rank): number => RANK_VALUES[r] + 2;
@@ -255,16 +256,93 @@ export function resetLiveChallengeState(startActive = true): LiveChallengeState 
 }
 
 function pickRandom<T>(arr: readonly T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
+  return cryptoPick(arr);
 }
 
 function shuffledDeck(): Card[] {
-  const deck = createDeck();
-  for (let i = deck.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [deck[i], deck[j]] = [deck[j], deck[i]];
+  return cryptoShuffle(createDeck());
+}
+
+export function canonicalHandNotation(c1: Card, c2: Card): string {
+  const r1 = rankNum(c1.rank);
+  const r2 = rankNum(c2.rank);
+  const hi = r1 >= r2 ? c1 : c2;
+  const lo = r1 >= r2 ? c2 : c1;
+  if (hi.rank === lo.rank) return `${hi.rank}${lo.rank}`;
+  return `${hi.rank}${lo.rank}${hi.suit === lo.suit ? 's' : 'o'}`;
+}
+
+function exactHeroPairKey(c1: Card, c2: Card): string {
+  return [cardToString(c1), cardToString(c2)].sort().join('');
+}
+
+export function buildSimulatedHandFingerprint(state: {
+  scenario: SimScenarioType;
+  heroPos: SimPosition;
+  heroCards: [Card, Card];
+  boardCards?: Card[];
+  fullRunout: [Card, Card, Card, Card, Card];
+}): string {
+  const canonical = canonicalHandNotation(state.heroCards[0], state.heroCards[1]);
+  const exact = exactHeroPairKey(state.heroCards[0], state.heroCards[1]);
+  const flopSig = state.fullRunout
+    .slice(0, 3)
+    .map(cardToString)
+    .sort()
+    .join('');
+  return `${state.scenario}|${state.heroPos}|${canonical}|${exact}|${flopSig}`;
+}
+
+function parseRecentKeyHints(recentKeys: string[] = []): {
+  fullKeys: Set<string>;
+  spotCanonicals: Set<string>;
+  exactPairs: Set<string>;
+  recentCanonicals: string[];
+  recentScenarios: SimScenarioType[];
+  recentPositions: SimPosition[];
+} {
+  const fullKeys = new Set<string>();
+  const spotCanonicals = new Set<string>();
+  const exactPairs = new Set<string>();
+  const recentCanonicals: string[] = [];
+  const recentScenarios: SimScenarioType[] = [];
+  const recentPositions: SimPosition[] = [];
+
+  for (const raw of recentKeys) {
+    if (!raw) continue;
+    fullKeys.add(raw);
+    const parts = raw.split('|');
+    if (parts.length >= 3) {
+      const sc = parts[0] as SimScenarioType;
+      const pos = parts[1] as SimPosition;
+      const can = parts[2];
+      if (sc in SCENARIO_META) recentScenarios.push(sc);
+      if (SIM_POSITIONS.includes(pos)) recentPositions.push(pos);
+      if (can) {
+        recentCanonicals.push(can);
+        spotCanonicals.add(`${sc}|${pos}|${can}`);
+      }
+      if (parts[3]) exactPairs.add(parts[3]);
+    } else {
+      exactPairs.add(raw);
+    }
   }
-  return deck;
+
+  return { fullKeys, spotCanonicals, exactPairs, recentCanonicals, recentScenarios, recentPositions };
+}
+
+function pickFromBagAvoidingRecent<T extends string>(all: readonly T[], recent: readonly T[]): T {
+  if (all.length === 0) throw new Error('Empty option list');
+  // Avoid repeating items seen in the current partial cycle of length `all.length`
+  const cycleTailCount = recent.length % all.length;
+  const tailWindow = cycleTailCount > 0 ? recent.slice(-cycleTailCount) : recent.slice(-Math.min(recent.length, all.length - 1));
+  const excluded = new Set(tailWindow);
+  if (recent.length > 0) {
+    excluded.add(recent[recent.length - 1]);
+  }
+  const fresh = all.filter(item => !excluded.has(item));
+  const pool = fresh.length > 0 ? fresh : all.filter(item => item !== recent[recent.length - 1]);
+  return cryptoPick(pool.length > 0 ? pool : all);
 }
 
 function preflopHandTier(c1: Card, c2: Card): 'premium' | 'strong' | 'playable' | 'speculative' | 'trash' {
@@ -286,29 +364,49 @@ function preflopHandTier(c1: Card, c2: Card): 'premium' | 'strong' | 'playable' 
 function pickPlayableHeroCards(
   deck: Card[],
   heroPos: SimPosition = 'BTN',
-  scenario: SimScenarioType = 'SRP_IP'
+  scenario: SimScenarioType = 'SRP_IP',
+  hints?: ReturnType<typeof parseRecentKeyHints>
 ): { hero: [Card, Card]; remaining: Card[] } {
-  const pool = [...deck];
   const needTight = heroPos === 'EP' || scenario === '4BET';
   const needMid = heroPos === 'MP' || scenario === '3BET_OOP' || scenario === 'SQUEEZE';
+  const recentCanonSet = new Set((hints?.recentCanonicals || []).slice(-18));
+  const exactPairs = hints?.exactPairs || new Set<string>();
+  const spotCanonicals = hints?.spotCanonicals || new Set<string>();
 
-  for (let attempt = 0; attempt < 42; attempt++) {
-    const c1 = pool[0];
-    const c2 = pool[1];
+  // Sample random indices across the freshly shuffled deck so pair distribution stays truly uniform
+  for (let attempt = 0; attempt < 90; attempt++) {
+    const idx1 = cryptoRandomInt(deck.length);
+    let idx2 = cryptoRandomInt(deck.length - 1);
+    if (idx2 >= idx1) idx2 += 1;
+
+    const c1 = deck[idx1];
+    const c2 = deck[idx2];
     const tier = preflopHandTier(c1, c2);
-    const accept = needTight
-      ? tier === 'premium' || tier === 'strong'
+    const tierOk = needTight
+      ? tier === 'premium' || tier === 'strong' || (tier === 'playable' && attempt > 16)
       : needMid
-      ? tier === 'premium' || tier === 'strong' || (tier === 'playable' && attempt > 6)
-      : tier !== 'trash' || attempt > 32;
+      ? tier === 'premium' || tier === 'strong' || tier === 'playable'
+      : tier !== 'trash' || attempt > 65;
 
-    if (accept) {
-      return { hero: [c1, c2], remaining: pool.slice(2) };
+    if (!tierOk) continue;
+
+    const canonical = canonicalHandNotation(c1, c2);
+    const exact = exactHeroPairKey(c1, c2);
+    const spotCan = `${scenario}|${heroPos}|${canonical}`;
+
+    // Strict novelty check for first 55 tries, then relax canonical before exact combo
+    if (attempt < 55 && (exactPairs.has(exact) || recentCanonSet.has(canonical) || spotCanonicals.has(spotCan))) {
+      continue;
     }
-    const first = pool.shift()!;
-    pool.push(first);
+    if (attempt < 80 && exactPairs.has(exact)) {
+      continue;
+    }
+
+    const remaining = deck.filter((_, idx) => idx !== idx1 && idx !== idx2);
+    return { hero: [c1, c2], remaining: cryptoShuffle(remaining) };
   }
-  return { hero: [pool[0], pool[1]], remaining: pool.slice(2) };
+
+  return { hero: [deck[0], deck[1]], remaining: deck.slice(2) };
 }
 
 function buildPreflopDecisionNode(
@@ -458,7 +556,9 @@ function resolvePositionalMatchup(
   const others = SIM_POSITIONS.filter(p => p !== heroPos);
 
   if (scenario === 'MULTIWAY') {
-    const picked = [others[0], others[Math.min(2, others.length - 1)]];
+    const shuffledOthers = cryptoShuffle(others);
+    const oppCount = cryptoRandomFloat() < 0.35 && shuffledOthers.length >= 3 ? 3 : 2;
+    const picked = shuffledOthers.slice(0, oppCount);
     return {
       ipVillains: picked.filter(p => postflopOrder[p] > postflopOrder[heroPos]),
       oopVillains: picked.filter(p => postflopOrder[p] < postflopOrder[heroPos])
@@ -731,10 +831,10 @@ const VILLAIN_NAMES: Record<VillainArchetype, string[]> = {
 
 function pickArchetypeByPreset(preset: TablePoolPreset): VillainArchetype {
   if (preset === 'recreational') {
-    return Math.random() < 0.72 ? 'Fish' : Math.random() < 0.5 ? 'Nit' : 'Regular';
+    return cryptoRandomFloat() < 0.72 ? 'Fish' : cryptoRandomFloat() < 0.5 ? 'Nit' : 'Regular';
   }
   if (preset === 'reg_heavy') {
-    return Math.random() < 0.75 ? 'Regular' : 'Nit';
+    return cryptoRandomFloat() < 0.75 ? 'Regular' : 'Nit';
   }
   return pickRandom(ARCHETYPES);
 }
@@ -748,22 +848,50 @@ export function createSimulatedHand(params: {
   tablePreset?: TablePoolPreset;
 }): SimulatedHandState {
   const allScenarios: SimScenarioType[] = Object.keys(SCENARIO_META) as SimScenarioType[];
+  const hints = parseRecentKeyHints(params.recentKeys);
   const chosenScenario: SimScenarioType =
-    params.scenarioFilter === 'RANDOM' ? pickRandom(allScenarios) : params.scenarioFilter;
+    params.scenarioFilter === 'RANDOM'
+      ? pickFromBagAvoidingRecent(allScenarios, hints.recentScenarios)
+      : params.scenarioFilter;
   const chosenHeroPos: SimPosition =
-    params.positionFilter === 'RANDOM' ? pickRandom(SIM_POSITIONS) : params.positionFilter;
+    params.positionFilter === 'RANDOM'
+      ? pickFromBagAvoidingRecent(SIM_POSITIONS, hints.recentPositions)
+      : params.positionFilter;
 
-  const deck = shuffledDeck();
-  const { hero, remaining } = pickPlayableHeroCards(deck, chosenHeroPos, chosenScenario);
-
-  // Ensure full 5-card runout avoids collision
-  const fullRunout: [Card, Card, Card, Card, Card] = [
-    remaining[0],
-    remaining[1],
-    remaining[2],
-    remaining[3],
-    remaining[4]
+  let hero: [Card, Card] = [FULL_DECK[0], FULL_DECK[1]];
+  let remaining: Card[] = FULL_DECK.slice(2);
+  let fullRunout: [Card, Card, Card, Card, Card] = [
+    FULL_DECK[2],
+    FULL_DECK[3],
+    FULL_DECK[4],
+    FULL_DECK[5],
+    FULL_DECK[6]
   ];
+
+  for (let dealTry = 0; dealTry < 8; dealTry++) {
+    const deck = shuffledDeck();
+    const dealt = pickPlayableHeroCards(deck, chosenHeroPos, chosenScenario, hints);
+    const candidateRunout: [Card, Card, Card, Card, Card] = [
+      dealt.remaining[0],
+      dealt.remaining[1],
+      dealt.remaining[2],
+      dealt.remaining[3],
+      dealt.remaining[4]
+    ];
+    hero = dealt.hero;
+    remaining = dealt.remaining;
+    fullRunout = candidateRunout;
+
+    const candidateFp = buildSimulatedHandFingerprint({
+      scenario: chosenScenario,
+      heroPos: chosenHeroPos,
+      heroCards: hero,
+      fullRunout
+    });
+    if (!hints.fullKeys.has(candidateFp)) {
+      break;
+    }
+  }
   let cursor = 5;
 
   const { ipVillains, oopVillains } = resolvePositionalMatchup(chosenHeroPos, chosenScenario);
@@ -863,7 +991,7 @@ export function createSimulatedHand(params: {
 
   // Occasionally villain leads OOP on flop (Donk or C-Bet against Hero IP)
   const heroActsSecond = oopVillains.length > 0;
-  const facingBetBB = heroActsSecond && Math.random() < 0.48 ? Math.round(meta.basePotBB * 0.35 * 10) / 10 : 0;
+  const facingBetBB = heroActsSecond && cryptoRandomFloat() < 0.48 ? Math.round(meta.basePotBB * 0.35 * 10) / 10 : 0;
   const potAfterDonk = meta.basePotBB + facingBetBB;
   const flopBoard = fullRunout.slice(0, 3);
 
@@ -1074,7 +1202,7 @@ export function applyHeroDecision(
     if (chosenOption.actionType === 'bet' || chosenOption.actionType === 'raise' || chosenOption.actionType === 'allin') {
       const foldThreshold =
         state.villainArchetype === 'Nit' ? 0.36 : state.villainArchetype === 'Regular' ? 0.25 : 0.14;
-      const villainFolds = chosenOption.actionType !== 'allin' && Math.random() < foldThreshold && activeCount === 1;
+      const villainFolds = chosenOption.actionType !== 'allin' && cryptoRandomFloat() < foldThreshold && activeCount === 1;
 
       if (villainFolds) {
         villainActionDesc = 'Fold ante tu agresión';
@@ -1094,9 +1222,9 @@ export function applyHeroDecision(
           mainV &&
           mainV.stackBB > chosenOption.amountBB * 2.5 &&
           vStrength &&
-          ((vStrength.tier === 'monster' && Math.random() < 0.55) ||
-            (vStrength.tier === 'strong' && state.villainArchetype === 'Regular' && Math.random() < 0.25) ||
-            (vStrength.tier === 'draw' && state.villainArchetype === 'Regular' && Math.random() < 0.22));
+          ((vStrength.tier === 'monster' && cryptoRandomFloat() < 0.55) ||
+            (vStrength.tier === 'strong' && state.villainArchetype === 'Regular' && cryptoRandomFloat() < 0.25) ||
+            (vStrength.tier === 'draw' && state.villainArchetype === 'Regular' && cryptoRandomFloat() < 0.22));
 
         if (canRaise && mainV) {
           const raiseTotal = Math.min(mainV.stackBB, Math.round(chosenOption.amountBB * 2.7 * 10) / 10);
@@ -1120,7 +1248,7 @@ export function applyHeroDecision(
           let callers = 0;
           updatedSeats = updatedSeats.map(s => {
             if (s.isHero || !s.inHand) return s;
-            if (activeCount > 1 && callers >= 1 && Math.random() < 0.45) {
+            if (activeCount > 1 && callers >= 1 && cryptoRandomFloat() < 0.45) {
               return { ...s, inHand: false, lastAction: 'Fold' };
             }
             callers++;
@@ -1157,7 +1285,7 @@ export function applyHeroDecision(
       const oopLeadCandidate = updatedSeats.find(
         s => !s.isHero && s.inHand && s.stackBB > 3 && oopVillains.includes(s.pos)
       );
-      if (!finished && oopLeadCandidate && Math.random() < 0.34) {
+      if (!finished && oopLeadCandidate && cryptoRandomFloat() < 0.34) {
         const heroRemStack = updatedSeats.find(s => s.isHero)?.stackBB ?? 80;
         const vBet = Math.min(
           oopLeadCandidate.stackBB,
@@ -1242,7 +1370,7 @@ export function applyHeroDecision(
   };
 
   const decisionRecord: LiveDecisionRecord = {
-    id: `live-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+    id: `live-${Date.now()}-${cryptoRandomInt(10000)}`,
     timestamp: Date.now(),
     handNumber: state.handNumber,
     heroPos: state.heroPos,

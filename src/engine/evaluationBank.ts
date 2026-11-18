@@ -9,7 +9,8 @@
 
 import { Card, cardId, type Rank, type Suit } from './cards';
 import type { AcademyCategory, QuizScenario } from './academySpots';
-import { readScopedItem, writeScopedItem } from '../lib/userStorage';
+import { getActiveStorageUserUid, readScopedItem, writeScopedItem } from '../lib/userStorage';
+import { cryptoShuffle } from '../lib/random';
 
 export type EvaluationMode = 'fixed' | 'levels' | 'variable';
 export type DifficultyLevel = 1 | 2 | 3 | 4;
@@ -1006,10 +1007,31 @@ export function loadSeenQuestionIds(): SeenStore {
   return { fixed: [], levels: [], variable: [] };
 }
 
+const sessionSeenEvalIdsByUid = new Map<string, Set<string>>();
+
+function getSessionSeenEvalSet(uid?: string): Set<string> {
+  const activeUid = uid || getActiveStorageUserUid();
+  let set = sessionSeenEvalIdsByUid.get(activeUid);
+  if (!set) {
+    set = new Set<string>();
+    sessionSeenEvalIdsByUid.set(activeUid, set);
+  }
+  return set;
+}
+
+export function resetEvaluationSessionHistory(uidOverride?: string): void {
+  const activeUid = uidOverride || getActiveStorageUserUid();
+  sessionSeenEvalIdsByUid.delete(activeUid);
+}
+
 export function markQuestionIdsSeen(mode: EvaluationMode, ids: string[]): SeenStore {
   const store = loadSeenQuestionIds();
   const merged = Array.from(new Set([...store[mode], ...ids]));
   const next: SeenStore = { ...store, [mode]: merged };
+  const sessionSeen = getSessionSeenEvalSet();
+  for (const id of ids) {
+    sessionSeen.add(id);
+  }
   try {
     writeScopedItem(SEEN_STORAGE_KEY, JSON.stringify(next));
     writeScopedItem(
@@ -1034,6 +1056,11 @@ function loadLastBatchIds(): Partial<Record<EvaluationMode, string[]>> {
 
 export function resetSeenQuestionIds(mode: EvaluationMode): SeenStore {
   const store = loadSeenQuestionIds();
+  const modeIdsToClear = new Set(store[mode]);
+  const sessionSeen = getSessionSeenEvalSet();
+  for (const id of modeIdsToClear) {
+    sessionSeen.delete(id);
+  }
   const next: SeenStore = { ...store, [mode]: [] };
   try {
     writeScopedItem(SEEN_STORAGE_KEY, JSON.stringify(next));
@@ -1043,18 +1070,10 @@ export function resetSeenQuestionIds(mode: EvaluationMode): SeenStore {
   return next;
 }
 
-function shuffle<T>(arr: T[]): T[] {
-  const copy = [...arr];
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-  }
-  return copy;
-}
-
 /**
- * Construye una evaluación garantizando preguntas SIN REPETICIÓN respecto a sesiones anteriores.
- * Prioriza preguntas del modo elegido que el jugador NO ha visto aún, y evita repetir el último lote al reiniciar ciclo.
+ * Construye una evaluación garantizando preguntas SIN REPETICIÓN dentro de la misma sesión
+ * (incluyendo entre modalidades Fixed/Levels/Variable) y entre sesiones consecutivas.
+ * Aleatoriza preguntas y orden de respuestas con CSPRNG.
  */
 export function generateNonRepeatingExam(
   mode: EvaluationMode,
@@ -1097,28 +1116,56 @@ export function generateNonRepeatingExam(
   const count = mode === 'fixed' ? filters.questionCount : mode === 'levels' ? 8 : filters.questionCount;
   const seenStore = loadSeenQuestionIds();
   const seenSet = new Set(seenStore[mode]);
+  const sessionSeenSet = getSessionSeenEvalSet();
   const lastBatchSet = new Set(loadLastBatchIds()[mode] || []);
 
-  let unseen = pool.filter(q => !seenSet.has(q.id));
+  // Exclude both persisted mode-seen AND any ID already seen in this session across modes
+  let unseen = pool.filter(q => !seenSet.has(q.id) && !sessionSeenSet.has(q.id));
   let cycleResetOccurred = false;
 
   if (unseen.length < count) {
-    resetSeenQuestionIds(mode);
-    const nonRecent = pool.filter(q => !lastBatchSet.has(q.id));
-    unseen = nonRecent.length >= count ? nonRecent : pool;
-    cycleResetOccurred = true;
+    // Try allowing cross-mode questions only if same-mode persisted seen alone leaves enough unseen
+    const unseenByModeOnly = pool.filter(q => !seenSet.has(q.id) && !lastBatchSet.has(q.id));
+    if (unseenByModeOnly.length >= count) {
+      unseen = unseenByModeOnly;
+    } else {
+      resetSeenQuestionIds(mode);
+      const nonRecent = pool.filter(q => !lastBatchSet.has(q.id) && !sessionSeenSet.has(q.id));
+      const nonRecentAnySession = pool.filter(q => !lastBatchSet.has(q.id));
+      unseen =
+        nonRecent.length >= count
+          ? nonRecent
+          : nonRecentAnySession.length >= count
+          ? nonRecentAnySession
+          : pool;
+      cycleResetOccurred = true;
+    }
   }
 
-  // Pick diverse categories first before random fill so every exam feels well-rounded
-  const shuffledUnseen = shuffle(unseen);
+  // Pick diverse categories + distinct conceptTags first before random fill
+  const shuffledUnseen = cryptoShuffle(unseen);
   const picked: EvaluationQuestion[] = [];
   const usedCategoriesInExam = new Set<string>();
+  const usedConceptsInExam = new Set<string>();
 
   for (const q of shuffledUnseen) {
     if (picked.length >= count) break;
-    if (!usedCategoriesInExam.has(q.category)) {
+    if (!usedCategoriesInExam.has(q.category) && !usedConceptsInExam.has(q.conceptTag)) {
       picked.push(q);
       usedCategoriesInExam.add(q.category);
+      usedConceptsInExam.add(q.conceptTag);
+    }
+  }
+
+  if (picked.length < count) {
+    const pickedIds = new Set(picked.map(p => p.id));
+    for (const q of shuffledUnseen) {
+      if (picked.length >= count) break;
+      if (!pickedIds.has(q.id) && !usedConceptsInExam.has(q.conceptTag)) {
+        picked.push(q);
+        pickedIds.add(q.id);
+        usedConceptsInExam.add(q.conceptTag);
+      }
     }
   }
 
@@ -1135,7 +1182,7 @@ export function generateNonRepeatingExam(
 
   const randomizedQuestions = picked.map(q => ({
     ...q,
-    options: shuffle(q.options)
+    options: cryptoShuffle(q.options)
   }));
 
   return {

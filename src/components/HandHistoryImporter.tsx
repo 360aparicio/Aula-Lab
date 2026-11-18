@@ -40,6 +40,7 @@ import type { SimPosition, SimScenarioType } from '../engine/handSimulator';
 import { TheTracker2HudDisplay } from './TheTracker2HudDisplay';
 import { LevelDiagnosticPanel } from './LevelDiagnosticPanel';
 import { auth } from '../lib/firebase';
+import { computeICM, ICM_PRESETS } from '../engine/icmEngine';
 import { AutoLearningEngine } from '../engine/autoLearningEngine';
 import { incrementMissionProgress } from '../lib/experienceMode';
 import { PokerGlossaryTip } from './PokerGlossaryTip';
@@ -66,7 +67,8 @@ import {
   ChevronRight,
   Download,
   Upload,
-  Cpu
+  Cpu,
+  Trophy
 } from 'lucide-react';
 
 interface HandHistoryImporterProps {
@@ -97,7 +99,12 @@ export const HandHistoryImporter: React.FC<HandHistoryImporterProps> = ({
   onGoToTrainer,
   onLoadInLabStudio
 }) => {
-  const [subTab, setSubTab] = useState<'tracker2' | 'diagnostic'>('tracker2');
+  const [subTab, setSubTab] = useState<'tracker2' | 'diagnostic' | 'icm'>('tracker2');
+  const [replayerSort, setReplayerSort] = useState<'worst' | 'best' | 'biggest_pot' | 'showdown'>('worst');
+  const [icmPresetId, setIcmPresetId] = useState<string>(ICM_PRESETS[0].id);
+  const [icmStacks, setIcmStacks] = useState<number[]>(() => [...ICM_PRESETS[0].stacks]);
+  const [icmPayouts, setIcmPayouts] = useState<number[]>(() => [...ICM_PRESETS[0].payouts]);
+  const [icmNames, setIcmNames] = useState<string[]>(() => [...ICM_PRESETS[0].names]);
   const [databases, setDatabases] = useState<Tracker2Database[]>(() => loadTracker2Databases());
   const [activeDbId, setActiveDbId] = useState<string>(() => getActiveTracker2DatabaseId());
   const [activeFilter, setActiveFilter] = useState<Tracker2FilterKey>('ALL');
@@ -155,10 +162,23 @@ export const HandHistoryImporter: React.FC<HandHistoryImporterProps> = ({
   const hudStats = useMemo(() => computeHudStats(filteredHands), [filteredHands]);
 
   const notableHands = useMemo(() => {
-    return [...filteredHands]
-      .sort((a, b) => a.netWonBB - b.netWonBB)
-      .slice(0, 25);
-  }, [filteredHands]);
+    const base =
+      replayerSort === 'showdown'
+        ? filteredHands.filter(h => h.wentToShowdown)
+        : [...filteredHands];
+    const sorted = [...base].sort((a, b) => {
+      if (replayerSort === 'best') return b.netWonBB - a.netWonBB;
+      if (replayerSort === 'biggest_pot') return b.heroInvestedBB - a.heroInvestedBB;
+      if (replayerSort === 'showdown') return Math.abs(b.netWonBB) - Math.abs(a.netWonBB);
+      return a.netWonBB - b.netWonBB;
+    });
+    return sorted.slice(0, 100);
+  }, [filteredHands, replayerSort]);
+
+  const icmResult = useMemo(
+    () => computeICM(icmStacks, icmPayouts, icmNames),
+    [icmStacks, icmPayouts, icmNames]
+  );
 
   const inspectedHand = useMemo(() => {
     if (notableHands.length === 0) return null;
@@ -613,10 +633,156 @@ export const HandHistoryImporter: React.FC<HandHistoryImporterProps> = ({
             <Activity className="w-3.5 h-3.5" />
             <span>Diagnóstico de Nivel</span>
           </button>
+          <button
+            type="button"
+            onClick={() => setSubTab('icm')}
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+              subTab === 'icm' ? 'bg-blue-600 text-white' : 'text-neutral-400 hover:text-white'
+            }`}
+          >
+            <Trophy className="w-3.5 h-3.5" />
+            <span>Simulador ICM</span>
+          </button>
         </div>
       </div>
 
-      {subTab === 'diagnostic' ? (
+      {subTab === 'icm' ? (
+        <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-5 space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                <Trophy className="w-4 h-4 text-amber-400" />
+                <span>Simulador ICM Exacto Malmuth-Harville &amp; Factor Burbuja</span>
+              </h2>
+              <p className="text-xs text-neutral-400 mt-0.5">
+                Calcula el valor real en dólares/puntos de cada stack en mesa final o burbuja (ICM vs ChipEV) y mide la presión exacta antes de pagar un All-In.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {ICM_PRESETS.map(p => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => {
+                    setIcmPresetId(p.id);
+                    setIcmStacks([...p.stacks]);
+                    setIcmPayouts([...p.payouts]);
+                    setIcmNames([...p.names]);
+                  }}
+                  className={`px-3 py-1.5 rounded-xl border text-xs font-semibold transition-colors cursor-pointer ${
+                    icmPresetId === p.id
+                      ? 'bg-blue-600 border-blue-500 text-white'
+                      : 'bg-black border-neutral-800 text-neutral-300 hover:text-white'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+            {/* Inputs: Stacks & Payouts */}
+            <div className="lg:col-span-5 space-y-4">
+              <div className="p-4 rounded-xl bg-black border border-neutral-800 space-y-3">
+                <div className="flex items-center justify-between text-xs font-semibold text-neutral-300">
+                  <span>Stacks de Mesa (Fichas)</span>
+                  <span className="font-mono tabular-nums text-neutral-500">Total: {icmResult.totalChips.toLocaleString()}</span>
+                </div>
+                <div className="space-y-2">
+                  {icmStacks.map((st, idx) => (
+                    <div key={idx} className="flex items-center justify-between gap-2 text-xs">
+                      <span className="text-neutral-400 truncate w-36">{icmNames[idx] || `Jugador ${idx + 1}`}</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step={100}
+                        value={st}
+                        aria-label={`Stack ${icmNames[idx] || idx + 1}`}
+                        onChange={e => {
+                          const v = Math.max(0, Number(e.target.value) || 0);
+                          setIcmStacks(prev => prev.map((x, i) => (i === idx ? v : x)));
+                        }}
+                        className="w-32 px-2.5 py-1.5 rounded-lg bg-neutral-950 border border-neutral-800 font-mono tabular-nums text-white text-right focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-black border border-neutral-800 space-y-3">
+                <div className="flex items-center justify-between text-xs font-semibold text-neutral-300">
+                  <span>Estructura de Premios (Pool: ${icmResult.totalPrizePool.toLocaleString()})</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {icmPayouts.map((pay, idx) => (
+                    <div key={idx} className="space-y-1">
+                      <label className="text-[11px] font-mono text-neutral-500 block">{idx + 1}º Puesto</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step={25}
+                        value={pay}
+                        aria-label={`Premio puesto ${idx + 1}`}
+                        onChange={e => {
+                          const v = Math.max(0, Number(e.target.value) || 0);
+                          setIcmPayouts(prev => prev.map((x, i) => (i === idx ? v : x)));
+                        }}
+                        className="w-full px-2.5 py-1.5 rounded-lg bg-neutral-950 border border-neutral-800 font-mono tabular-nums text-emerald-400 text-xs focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* ICM Output Table */}
+            <div className="lg:col-span-7 bg-black border border-neutral-800 rounded-xl p-4 space-y-3 overflow-x-auto">
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <span className="font-bold text-white">Equidad Malmuth-Harville vs Valor por Fichas (ChipEV)</span>
+                <span className="text-neutral-500 font-mono">Conservación 100% del Prize Pool</span>
+              </div>
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-neutral-800 text-neutral-400 font-mono uppercase text-[10px]">
+                    <th className="py-2 pr-3">Asiento</th>
+                    <th className="py-2 px-2">Fichas</th>
+                    <th className="py-2 px-2">ChipEV</th>
+                    <th className="py-2 px-2">ICM $</th>
+                    <th className="py-2 px-2">Dif. ICM</th>
+                    <th className="py-2 pl-2 text-right">Factor Burbuja vs #1</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-800/70 font-mono tabular-nums">
+                  {icmResult.players.map((pl, idx) => {
+                    const bf = idx === 0 ? 1.0 : (icmResult.bubbleFactorMatrix[idx]?.[0] ?? 1);
+                    return (
+                      <tr key={pl.playerIndex} className="hover:bg-neutral-900/40">
+                        <td className="py-2.5 pr-3 font-sans font-semibold text-white">{pl.name}</td>
+                        <td className="py-2.5 px-2 text-neutral-300">
+                          {pl.chips.toLocaleString()} <span className="text-neutral-500">({pl.chipSharePct.toFixed(1)}%)</span>
+                        </td>
+                        <td className="py-2.5 px-2 text-neutral-400">${pl.chipEvValue.toFixed(2)}</td>
+                        <td className="py-2.5 px-2 font-bold text-emerald-400">${pl.icmEquity.toFixed(2)}</td>
+                        <td className={`py-2.5 px-2 font-semibold ${pl.icmDiff >= 0 ? 'text-cyan-300' : 'text-amber-300'}`}>
+                          {pl.icmDiff >= 0 ? '+' : ''}
+                          {pl.icmDiff.toFixed(2)}
+                        </td>
+                        <td className={`py-2.5 pl-2 text-right font-bold ${bf >= 1.5 ? 'text-rose-400' : 'text-neutral-300'}`}>
+                          {bf.toFixed(2)}x
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <p className="text-[11px] text-neutral-400 pt-2 border-t border-neutral-800/80">
+                Nota estratégica: Un Factor de Burbuja de <strong className="text-white">1.50x</strong> significa que perder tus fichas duele 1.5 veces más que el valor que ganas al doblarte; debes requerir mayor equity real para pagar un All-In del Chipleader.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : subTab === 'diagnostic' ? (
         <LevelDiagnosticPanel
           activeTracker2Db={activeDb}
           onLaunchDrill={onLaunchDrill}
@@ -1046,11 +1212,23 @@ export const HandHistoryImporter: React.FC<HandHistoryImporterProps> = ({
                     <span>Replayer Visual 6-Max · Guía IA &amp; Envío a Mazo SM-2</span>
                   </h2>
                   <p className="text-xs text-neutral-400 mt-0.5">
-                    Selecciona una mano (ordenadas desde las mayores pérdidas en BB) para reproducir la mesa, auditar la línea y guardarla en tu repaso SM-2.
+                    Explora hasta 100 manos filtradas por criterio (mayores pérdidas, mayores ganancias, botes grandes o showdowns).
                   </p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={replayerSort}
+                    onChange={e => setReplayerSort(e.target.value as 'worst' | 'best' | 'biggest_pot' | 'showdown')}
+                    aria-label="Criterio de orden para Replayer"
+                    className="px-3 py-1.5 rounded-xl bg-black border border-neutral-800 text-xs text-blue-300 font-semibold focus:outline-none focus:border-blue-500 cursor-pointer"
+                  >
+                    <option value="worst" className="bg-neutral-950 text-white">Mayores Pérdidas (BB)</option>
+                    <option value="best" className="bg-neutral-950 text-white">Mayores Ganancias (BB)</option>
+                    <option value="biggest_pot" className="bg-neutral-950 text-white">Botes Más Grandes</option>
+                    <option value="showdown" className="bg-neutral-950 text-white">Solo Showdowns</option>
+                  </select>
+
                   <select
                     value={inspectedHand.id}
                     onChange={e => {

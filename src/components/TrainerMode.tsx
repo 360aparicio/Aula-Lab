@@ -9,10 +9,11 @@
  * - Reto de 100 Manos Aleatorias en Vivo persistente por UID.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Card, SUIT_COLORS, SUIT_SYMBOLS } from '../engine/cards';
 import {
   applyHeroDecision,
+  buildSimulatedHandFingerprint,
   createSimulatedHand,
   loadLiveChallengeState,
   resetLiveChallengeState,
@@ -93,32 +94,46 @@ export const TrainerMode: React.FC<TrainerModeProps> = ({
   const [includePreflop, setIncludePreflop] = useState<boolean>(true);
   const [tablePreset, setTablePreset] = useState<TablePoolPreset>('mixed');
   const [challenge, setChallenge] = useState<LiveChallengeState>(() => loadLiveChallengeState());
-  const [handState, setHandState] = useState<SimulatedHandState>(() =>
-    createSimulatedHand({
+  const recentHandKeysRef = useRef<string[]>([]);
+  const sessionDealCountRef = useRef<number>(loadLiveChallengeState().completedHands + 1);
+  const [handState, setHandState] = useState<SimulatedHandState>(() => {
+    const initial = createSimulatedHand({
       handNumber: loadLiveChallengeState().completedHands + 1,
       positionFilter: drillTarget?.pos || 'RANDOM',
       scenarioFilter: drillTarget?.scenario || 'RANDOM',
       includePreflop: true,
       tablePreset: 'mixed'
-    })
-  );
+    });
+    recentHandKeysRef.current = [buildSimulatedHandFingerprint(initial)];
+    return initial;
+  });
   const [rightTab, setRightTab] = useState<'step' | 'ev' | 'leaks' | 'level'>('step');
   const [confirmResetChallenge, setConfirmResetChallenge] = useState(false);
+
+  const recordDealtHandFingerprint = (dealt: SimulatedHandState) => {
+    const fp = buildSimulatedHandFingerprint(dealt);
+    recentHandKeysRef.current = [
+      ...recentHandKeysRef.current.filter(k => k !== fp).slice(-249),
+      fp
+    ];
+  };
 
   // React to incoming drill launches from LevelDiagnosticPanel
   useEffect(() => {
     if (!drillTarget) return;
     setPosFilter(drillTarget.pos);
     setScenarioFilter(drillTarget.scenario);
-    setHandState(
-      createSimulatedHand({
-        handNumber: challenge.completedHands + 1,
-        positionFilter: drillTarget.pos,
-        scenarioFilter: drillTarget.scenario,
-        includePreflop,
-        tablePreset
-      })
-    );
+    sessionDealCountRef.current = Math.max(sessionDealCountRef.current + 1, challenge.completedHands + 1);
+    const nextHand = createSimulatedHand({
+      handNumber: sessionDealCountRef.current,
+      positionFilter: drillTarget.pos,
+      scenarioFilter: drillTarget.scenario,
+      recentKeys: recentHandKeysRef.current,
+      includePreflop,
+      tablePreset
+    });
+    recordDealtHandFingerprint(nextHand);
+    setHandState(nextHand);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drillTarget?.nonce]);
 
@@ -128,16 +143,17 @@ export const TrainerMode: React.FC<TrainerModeProps> = ({
     overridePreflop?: boolean,
     overridePreset?: TablePoolPreset
   ) => {
-    const nextNum = challenge.completedHands + 1;
-    setHandState(
-      createSimulatedHand({
-        handNumber: nextNum,
-        positionFilter: overridePos ?? posFilter,
-        scenarioFilter: overrideSc ?? scenarioFilter,
-        includePreflop: overridePreflop ?? includePreflop,
-        tablePreset: overridePreset ?? tablePreset
-      })
-    );
+    sessionDealCountRef.current = Math.max(sessionDealCountRef.current + 1, challenge.completedHands + 1);
+    const nextHand = createSimulatedHand({
+      handNumber: sessionDealCountRef.current,
+      positionFilter: overridePos ?? posFilter,
+      scenarioFilter: overrideSc ?? scenarioFilter,
+      recentKeys: recentHandKeysRef.current,
+      includePreflop: overridePreflop ?? includePreflop,
+      tablePreset: overridePreset ?? tablePreset
+    });
+    recordDealtHandFingerprint(nextHand);
+    setHandState(nextHand);
   };
 
   const handleHeroOption = (opt: SimActionOption) => {
@@ -169,15 +185,17 @@ export const TrainerMode: React.FC<TrainerModeProps> = ({
     const fresh = resetLiveChallengeState(true);
     setChallenge(fresh);
     setConfirmResetChallenge(false);
-    setHandState(
-      createSimulatedHand({
-        handNumber: 1,
-        positionFilter: posFilter,
-        scenarioFilter: scenarioFilter,
-        includePreflop,
-        tablePreset
-      })
-    );
+    sessionDealCountRef.current = 1;
+    const nextHand = createSimulatedHand({
+      handNumber: 1,
+      positionFilter: posFilter,
+      scenarioFilter: scenarioFilter,
+      recentKeys: recentHandKeysRef.current,
+      includePreflop,
+      tablePreset
+    });
+    recordDealtHandFingerprint(nextHand);
+    setHandState(nextHand);
   };
 
   const liveDiagnostic = useMemo(() => buildDiagnosticFromLiveChallenge(challenge), [challenge]);

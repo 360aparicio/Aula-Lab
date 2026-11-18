@@ -29,6 +29,8 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { AutoLearningEngine, calculateSM2, HandHistoryRecord } from '../engine/autoLearningEngine';
+import { SM2_UPDATE_EVENT } from '../engine/spacedRepetition';
+import { cryptoRandomInt } from '../lib/random';
 import { readScopedItem, writeScopedItem } from '../lib/userStorage';
 
 export interface SM2Flashcard {
@@ -124,7 +126,7 @@ export const CustomFlashcardManager: React.FC = () => {
     } catch (e) {}
   }, [cards]);
 
-  // Listen for storage changes
+  // Listen for storage & SM-2 update events
   useEffect(() => {
     const handleUpdate = () => {
       try {
@@ -134,7 +136,11 @@ export const CustomFlashcardManager: React.FC = () => {
       } catch (e) {}
     };
     window.addEventListener('storage', handleUpdate);
-    return () => window.removeEventListener('storage', handleUpdate);
+    window.addEventListener(SM2_UPDATE_EVENT, handleUpdate);
+    return () => {
+      window.removeEventListener('storage', handleUpdate);
+      window.removeEventListener(SM2_UPDATE_EVENT, handleUpdate);
+    };
   }, []);
 
   // Filter cards
@@ -144,9 +150,10 @@ export const CustomFlashcardManager: React.FC = () => {
     cards.reduce((acc, c) => acc + c.easeFactor, 0) / Math.max(1, cards.length)
   ).toFixed(2);
 
-  // Active card pool for review
-  const activeDeck = activeTab === 'due' ? (dueCards.length > 0 ? dueCards : cards) : cards;
-  const currentCard = activeDeck[activeReviewIndex] || null;
+  // Active card pool for review (preserve genuine empty due state!)
+  const activeDeck = activeTab === 'due' ? dueCards : cards;
+  const safeIndex = activeDeck.length > 0 ? Math.min(activeReviewIndex, activeDeck.length - 1) : 0;
+  const currentCard = activeDeck[safeIndex] || null;
 
   /**
    * Ejecutar Algoritmo SuperMemo SM-2
@@ -176,9 +183,10 @@ export const CustomFlashcardManager: React.FC = () => {
 
     setCards(updated);
     setIsFlipped(false);
-    if (activeReviewIndex >= activeDeck.length - 1) {
-      setActiveReviewIndex(0);
-    }
+    const remainingCount = activeTab === 'due'
+      ? updated.filter(c => c.nextReviewDate <= Date.now()).length
+      : updated.length;
+    setActiveReviewIndex(prev => (remainingCount <= 0 ? 0 : prev >= remainingCount ? 0 : prev));
   };
 
   const handleCreateCard = (e: React.FormEvent) => {
@@ -186,7 +194,7 @@ export const CustomFlashcardManager: React.FC = () => {
     if (!newQuestion.trim() || !newAnswer.trim()) return;
 
     const newCard: SM2Flashcard = {
-      id: `fc-${Date.now()}`,
+      id: `fc-${Date.now()}-${cryptoRandomInt(10000)}`,
       question: newQuestion.trim(),
       answer: newAnswer.trim(),
       category: newCategory,
@@ -393,7 +401,7 @@ export const CustomFlashcardManager: React.FC = () => {
                   </div>
                   <div className="flex items-center gap-2 text-xs font-mono text-neutral-400">
                     <span>
-                      Tarjeta {activeReviewIndex + 1} de {activeDeck.length}
+                      Tarjeta {safeIndex + 1} de {activeDeck.length}
                     </span>
                     <button
                       type="button"

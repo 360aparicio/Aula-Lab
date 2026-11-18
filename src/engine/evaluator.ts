@@ -6,7 +6,7 @@
  * Mathematically verified for all categories, kickers, and split pots.
  */
 
-import { Card, RANK_VALUES, RANKS, Rank } from './cards';
+import { Card, FULL_DECK, RANK_VALUES, RANKS, Rank } from './cards';
 
 export enum HandCategory {
   HighCard = 0,
@@ -286,4 +286,103 @@ export function compareHands(hand1: Card[], hand2: Card[], board: Card[]): numbe
   const eval1 = evaluateCards([...hand1, ...board]);
   const eval2 = evaluateCards([...hand2, ...board]);
   return eval1.score - eval2.score;
+}
+
+export interface RangeEquityResult {
+  oopEquityPct: number;
+  ipEquityPct: number;
+  tiePct: number;
+  samplesEvaluated: number;
+}
+
+/**
+ * Evaluates Range vs Range equity via deterministic-seeded Monte Carlo simulation
+ * using the exact 7-card hand evaluator on the current board (3, 4, or 5 cards).
+ */
+export function computeRangeEquityMonteCarlo(
+  oopCombos: ReadonlyArray<{ cards: [Card, Card]; weight: number }>,
+  ipCombos: ReadonlyArray<{ cards: [Card, Card]; weight: number }>,
+  board: Card[],
+  maxSamples = 600
+): RangeEquityResult {
+  const validOop = oopCombos.filter(c => c.weight > 0);
+  const validIp = ipCombos.filter(c => c.weight > 0);
+  if (validOop.length === 0 || validIp.length === 0 || board.length < 3 || board.length > 5) {
+    return { oopEquityPct: 50, ipEquityPct: 50, tiePct: 0, samplesEvaluated: 0 };
+  }
+
+  const boardIds = new Set(board.map(c => c.id));
+  const remainingDeck = FULL_DECK.filter(c => !boardIds.has(c.id));
+  const cardsNeeded = Math.max(0, 5 - board.length);
+
+  // Deterministic LCG PRNG so UI stays reproducible for identical ranges/board
+  let seed = 0x5f3759df ^ (board.reduce((s, c, idx) => s + c.id * (idx + 7), 0) + validOop.length * 31 + validIp.length * 17);
+  const nextRand = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+
+  let oopScoreSum = 0;
+  let ipScoreSum = 0;
+  let tieCount = 0;
+  let totalWeight = 0;
+  let samples = 0;
+
+  for (let iter = 0; iter < maxSamples * 2 && samples < maxSamples; iter++) {
+    const oop = validOop[Math.floor(nextRand() * validOop.length)];
+    const ip = validIp[Math.floor(nextRand() * validIp.length)];
+
+    // Reject colliding hole cards
+    const o0 = oop.cards[0].id;
+    const o1 = oop.cards[1].id;
+    const i0 = ip.cards[0].id;
+    const i1 = ip.cards[1].id;
+    if (o0 === i0 || o0 === i1 || o1 === i0 || o1 === i1) continue;
+
+    let runoutBoard = board;
+    if (cardsNeeded > 0) {
+      const deadIds = new Set([o0, o1, i0, i1]);
+      const avail = remainingDeck.filter(c => !deadIds.has(c.id));
+      if (avail.length < cardsNeeded) continue;
+      const drawn: Card[] = [];
+      const usedIdx = new Set<number>();
+      while (drawn.length < cardsNeeded) {
+        const pick = Math.floor(nextRand() * avail.length);
+        if (!usedIdx.has(pick)) {
+          usedIdx.add(pick);
+          drawn.push(avail[pick]);
+        }
+      }
+      runoutBoard = [...board, ...drawn];
+    }
+
+    const w = oop.weight * ip.weight;
+    const cmp = compareHands(oop.cards, ip.cards, runoutBoard);
+    if (cmp > 0) {
+      oopScoreSum += w;
+    } else if (cmp < 0) {
+      ipScoreSum += w;
+    } else {
+      oopScoreSum += w * 0.5;
+      ipScoreSum += w * 0.5;
+      tieCount += w;
+    }
+    totalWeight += w;
+    samples++;
+  }
+
+  if (totalWeight <= 0 || samples === 0) {
+    return { oopEquityPct: 50, ipEquityPct: 50, tiePct: 0, samplesEvaluated: 0 };
+  }
+
+  const oopPct = Math.round((oopScoreSum / totalWeight) * 1000) / 10;
+  const ipPct = Math.round((100 - oopPct) * 10) / 10;
+  const tiePct = Math.round((tieCount / totalWeight) * 1000) / 10;
+
+  return {
+    oopEquityPct: oopPct,
+    ipEquityPct: ipPct,
+    tiePct,
+    samplesEvaluated: samples
+  };
 }

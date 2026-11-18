@@ -290,6 +290,7 @@ export const EvaluationModule: React.FC = () => {
   const handleResetSeenForMode = (mode: EvaluationMode) => {
     const updated = resetSeenQuestionIds(mode);
     setSeenStore(updated);
+    setCycleNotice(null);
   };
 
   const handleAnswer = (optIdx: number) => {
@@ -1013,7 +1014,7 @@ export const EvaluationModule: React.FC = () => {
                     const chosenLabel = ans.question.options[ans.chosenIdx]?.label || 'Sin selección';
                     return (
                       <div
-                        key={ans.question.id}
+                        key={`${ans.question.id}-${idx}`}
                         className={`p-5 rounded-2xl border space-y-4 ${
                           ans.isCorrect
                             ? 'bg-neutral-900/60 border-neutral-800'

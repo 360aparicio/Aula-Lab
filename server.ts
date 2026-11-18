@@ -38,6 +38,8 @@ async function startServer() {
     res.json({
       status: 'ok',
       service: 'allin-school-edu',
+      educationalOnly: true,
+      legalFramework: 'CAN Decisión 351/1993 · Colombia Ley 1581/2012 (Habeas Data)',
       timestamp: Date.now()
     });
   });

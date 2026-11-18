@@ -8,8 +8,9 @@
  * flashcards con el algoritmo SuperMemo SM-2 para garantizar la retención a largo plazo.
  */
 
-import { SpacedRepetitionManager } from './spacedRepetition';
+import { SM2_UPDATE_EVENT, SpacedRepetitionManager } from './spacedRepetition';
 import { readScopedItem, writeScopedItem } from '../lib/userStorage';
+import { cryptoRandomInt } from '../lib/random';
 
 export interface HandHistoryRecord {
   id: string;
@@ -207,6 +208,7 @@ export class AutoLearningEngine {
       writeScopedItem(STORAGE_KEY, JSON.stringify(this.profile));
       if (emitEvent && typeof window !== 'undefined') {
         window.dispatchEvent(new Event('storage'));
+        window.dispatchEvent(new Event(SM2_UPDATE_EVENT));
       }
     } catch (e) {
       // ignore
@@ -246,7 +248,7 @@ export class AutoLearningEngine {
   public recordDecision(decision: Omit<PlayerDecisionRecord, 'id' | 'timestamp'>): PlayerLearningProfile {
     const fullRecord: PlayerDecisionRecord = {
       ...decision,
-      id: `dec-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      id: `dec-${Date.now()}-${cryptoRandomInt(100000)}`,
       timestamp: Date.now()
     };
 
@@ -315,7 +317,7 @@ export class AutoLearningEngine {
    * Si es un error o el usuario pide guardarla, crea o actualiza automáticamente una tarjeta SM-2.
    */
   public collectHand(hand: Omit<HandHistoryRecord, 'id' | 'timestamp'>): HandHistoryRecord {
-    const id = `hh-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const id = `hh-${Date.now()}-${cryptoRandomInt(100000)}`;
     const fullHand: HandHistoryRecord = {
       ...hand,
       id,
@@ -373,7 +375,7 @@ export class AutoLearningEngine {
       const raw = readScopedItem(SM2_STORAGE_KEY);
       const cards = raw ? JSON.parse(raw) : [];
 
-      const cardId = `fc-auto-${Date.now()}`;
+      const cardId = `fc-auto-${Date.now()}-${cryptoRandomInt(100000)}`;
       const newCard = {
         id: cardId,
         question: `Spot [${hand.category}] ${hand.heroPos} vs ${hand.villainPos} | Hero: ${hand.heroCards} | Board: ${hand.board || 'Preflop'} | Bote: ${hand.potBB} BB. ¿Cuál es la acción y sizing matemáticamente óptimo?`,
@@ -393,9 +395,12 @@ export class AutoLearningEngine {
       // Si ya existía una parecida, la ponemos al frente con review pendiente
       const filtered = cards.filter((c: { question?: string }) => c.question !== newCard.question);
       writeScopedItem(SM2_STORAGE_KEY, JSON.stringify([newCard, ...filtered]));
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event(SM2_UPDATE_EVENT));
+      }
       return cardId;
     } catch (e) {
-      return `fc-fallback-${Date.now()}`;
+      return `fc-fallback-${Date.now()}-${cryptoRandomInt(10000)}`;
     }
   }
 

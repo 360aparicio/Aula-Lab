@@ -11,8 +11,8 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { Card, parseCard, SUIT_COLORS, SUIT_SYMBOLS } from '../engine/cards';
-import { compareHands, evaluateCards } from '../engine/evaluator';
+import { Card, cardToString, FULL_DECK, parseCard, SUIT_COLORS, SUIT_SYMBOLS } from '../engine/cards';
+import { compareHands, evaluateCards, HandCategory } from '../engine/evaluator';
 import {
   loadDailyMissions,
   incrementMissionProgress,
@@ -89,6 +89,52 @@ const RANKING_DUELS: RankingDuelScenario[] = [
     lesson: 'Ambos tienen Par de Ases, pero AQ gana por mejor Kicker (Q vence a T). Cuidado con pagar 3 calles con As-kicker débil.'
   }
 ];
+
+const CATEGORY_ES: Record<HandCategory, string> = {
+  [HandCategory.HighCard]: 'Carta Alta',
+  [HandCategory.OnePair]: 'Un Par',
+  [HandCategory.TwoPair]: 'Doble Pareja',
+  [HandCategory.ThreeOfAKind]: 'Trío / Set',
+  [HandCategory.Straight]: 'Escalera',
+  [HandCategory.Flush]: 'Color (Flush)',
+  [HandCategory.FullHouse]: 'Full House',
+  [HandCategory.FourOfAKind]: 'Poker (Quad)',
+  [HandCategory.StraightFlush]: 'Escalera de Color'
+};
+
+function generateRandomDuel(seq: number): RankingDuelScenario {
+  const deck = [...FULL_DECK];
+  for (let i = deck.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [deck[i], deck[j]] = [deck[j], deck[i]];
+  }
+  const boardCards = deck.slice(0, 5);
+  const aCards = deck.slice(5, 7);
+  const bCards = deck.slice(7, 9);
+
+  const evalA = evaluateCards([...aCards, ...boardCards]);
+  const evalB = evaluateCards([...bCards, ...boardCards]);
+  const cmp = compareHands(aCards, bCards, boardCards);
+  const winnerEval = cmp >= 0 ? evalA : evalB;
+  const loserEval = cmp >= 0 ? evalB : evalA;
+
+  let lesson = '';
+  if (cmp === 0) {
+    lesson = `Empate exacto (Split Pot): ambos forman la misma mejor jugada de 5 cartas (${CATEGORY_ES[evalA.category]}). El bote se reparte 50/50.`;
+  } else if (winnerEval.category > loserEval.category) {
+    lesson = `${CATEGORY_ES[winnerEval.category]} vence siempre a ${CATEGORY_ES[loserEval.category]}. Revisa primero si el board permite escaleras, colores o full antes de sobrevalorar tu mano.`;
+  } else {
+    lesson = `Misma categoría (${CATEGORY_ES[winnerEval.category]}), pero desempata la carta más alta / Kicker (${winnerEval.description} supera a ${loserEval.description}).`;
+  }
+
+  return {
+    id: `rnd-${seq}-${Date.now()}`,
+    board: boardCards.map(cardToString),
+    handA: [cardToString(aCards[0]), cardToString(aCards[1])],
+    handB: [cardToString(bCards[0]), cardToString(bCards[1])],
+    lesson
+  };
+}
 
 const SEAT_PROFITABILITY_GUIDE: Array<{
   pos: string;
@@ -167,13 +213,14 @@ export const FundamentalsModule: React.FC<FundamentalsModuleProps> = ({
   onLaunchDrill
 }) => {
   const [duelIdx, setDuelIdx] = useState(0);
+  const [customDuel, setCustomDuel] = useState<RankingDuelScenario | null>(null);
   const [duelGuess, setDuelGuess] = useState<'A' | 'B' | null>(null);
   const [selectedSeatPos, setSelectedSeatPos] = useState<string>('BTN');
   const [potBB, setPotBB] = useState<number>(10);
   const [betBB, setBetBB] = useState<number>(5);
   const [missionsState, setMissionsState] = useState(() => loadDailyMissions());
 
-  const activeDuel = RANKING_DUELS[duelIdx % RANKING_DUELS.length];
+  const activeDuel = customDuel || RANKING_DUELS[duelIdx % RANKING_DUELS.length];
 
   const duelEval = useMemo(() => {
     const board = activeDuel.board.map(parseCard);
@@ -199,7 +246,14 @@ export const FundamentalsModule: React.FC<FundamentalsModuleProps> = ({
   };
 
   const handleNextDuel = () => {
+    setCustomDuel(null);
     setDuelIdx(prev => (prev + 1) % RANKING_DUELS.length);
+    setDuelGuess(null);
+  };
+
+  const handleRandomDuel = () => {
+    setDuelIdx(prev => prev + 1);
+    setCustomDuel(generateRandomDuel(duelIdx + 1));
     setDuelGuess(null);
   };
 
@@ -257,10 +311,13 @@ export const FundamentalsModule: React.FC<FundamentalsModuleProps> = ({
             <Trophy className="w-4 h-4 text-amber-400" />
             <h2 className="text-sm font-bold text-white">Misiones Diarias de Progreso</h2>
           </div>
-          <div className="flex items-center gap-4 text-xs font-mono tabular-nums">
+          <div className="flex flex-wrap items-center gap-4 text-xs font-mono tabular-nums">
             <span className="flex items-center gap-1.5 text-amber-300 font-bold">
               <Flame className="w-4 h-4" />
               <span>Racha: {missionsState.streakDays} día(s)</span>
+            </span>
+            <span className="text-neutral-400">
+              Mejor récord: <strong className="text-white">{Math.max(missionsState.bestStreakDays || 1, missionsState.streakDays)} d</strong>
             </span>
             <span className="text-emerald-400 font-bold">
               {missionsState.missions.filter(m => m.completed).length}/{missionsState.missions.length} completadas
@@ -318,14 +375,24 @@ export const FundamentalsModule: React.FC<FundamentalsModuleProps> = ({
                 Haz clic en la mano ganadora usando las 5 cartas comunitarias.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={handleNextDuel}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-xs font-semibold text-neutral-200 cursor-pointer"
-            >
-              <Shuffle className="w-3.5 h-3.5 text-blue-400" />
-              <span>Otro Duelo</span>
-            </button>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={handleRandomDuel}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-xs font-semibold text-blue-200 cursor-pointer whitespace-nowrap"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-blue-400" />
+                <span>Duelo Aleatorio</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleNextDuel}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-xs font-semibold text-neutral-200 cursor-pointer whitespace-nowrap"
+              >
+                <Shuffle className="w-3.5 h-3.5 text-blue-400" />
+                <span>Siguiente</span>
+              </button>
+            </div>
           </div>
 
           <div className="p-4 rounded-2xl bg-gradient-to-b from-emerald-950/50 to-black border border-emerald-900/40 flex flex-col items-center gap-2">

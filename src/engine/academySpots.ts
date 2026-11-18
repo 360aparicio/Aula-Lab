@@ -6,8 +6,9 @@
  * de Evaluación con Temas Fijos y Variables de Spot configurables.
  */
 
-import { Card, cardId } from './cards';
-import { readScopedJson, writeScopedJson } from '../lib/userStorage';
+import { Card, Suit, cardId } from './cards';
+import { getActiveStorageUserUid, readScopedJson, writeScopedJson } from '../lib/userStorage';
+import { cryptoShuffle } from '../lib/random';
 
 export type AcademyCategory =
   | 'dry_flop'
@@ -51,7 +52,7 @@ const c = (rank: Card['rank'], suit: Card['suit']): Card => ({
   id: cardId(rank, suit)
 });
 
-export const ACADEMY_SCENARIO_BANK: Record<AcademyCategory, QuizScenario[]> = {
+const BASE_ACADEMY_SCENARIO_BANK: Record<AcademyCategory, QuizScenario[]> = {
   dry_flop: [
     {
       id: 'dry-1',
@@ -160,7 +161,7 @@ export const ACADEMY_SCENARIO_BANK: Record<AcademyCategory, QuizScenario[]> = {
       id: 'wet-1',
       category: 'wet_flop',
       categoryName: 'Flop Coordinado (Wet)',
-      title: 'Overpair TT en 9s-8s-6d (CO vs BTN)',
+      title: 'Overpair TT en 9♠-8♠-6♦ (CO vs BTN)',
       heroCards: [c('T', 's'), c('T', 'h')],
       board: [c('9', 's'), c('8', 's'), c('6', 'd')],
       potBB: 7.0,
@@ -263,7 +264,7 @@ export const ACADEMY_SCENARIO_BANK: Record<AcademyCategory, QuizScenario[]> = {
       id: 'mono-1',
       category: 'monotone_flop',
       categoryName: 'Flop Monótono (3 del mismo palo)',
-      title: 'Overpair KK sin Blocker en Qh-9h-4h (UTG vs BB)',
+      title: 'Overpair KK sin Blocker en Q♥-9♥-4♥ (UTG vs BB)',
       heroCards: [c('K', 's'), c('K', 'd')],
       board: [c('Q', 'h'), c('9', 'h'), c('4', 'h')],
       potBB: 6.0,
@@ -313,9 +314,9 @@ export const ACADEMY_SCENARIO_BANK: Record<AcademyCategory, QuizScenario[]> = {
       id: 'mono-3',
       category: 'monotone_flop',
       categoryName: 'Flop Monótono (3 del mismo palo)',
-      title: 'Color Flopeado al Rey en K♦-9♦-4♦ (CO vs BB)',
-      heroCards: [c('K', 's'), c('8', 'd')],
-      board: [c('T', 'd'), c('7', 'd'), c('3', 'd')],
+      title: 'Color Flopeado al Rey en J♦-9♦-4♦ (CO vs BB)',
+      heroCards: [c('K', 'd'), c('8', 'd')],
+      board: [c('J', 'd'), c('9', 'd'), c('4', 'd')],
       potBB: 6.5,
       spr: 14,
       opponentProfile: 'fish',
@@ -441,7 +442,7 @@ export const ACADEMY_SCENARIO_BANK: Record<AcademyCategory, QuizScenario[]> = {
       id: 'pair-4',
       category: 'paired_flop',
       categoryName: 'Flop Emparejado',
-      title: 'Defensa con Trips Debil (7-6s en K-7-7) en BB',
+      title: 'Defensa con Trips Debil (76s en K-7-7) en BB',
       heroCards: [c('7', 'h'), c('6', 'h')],
       board: [c('K', 's'), c('7', 'd'), c('7', 'c')],
       potBB: 8.5,
@@ -1190,9 +1191,9 @@ export const ACADEMY_SCENARIO_BANK: Record<AcademyCategory, QuizScenario[]> = {
       id: 'bc-1',
       category: 'bluff_catch',
       categoryName: 'Bluff Catching en River',
-      title: 'Caza de Faroles Top Pair vs Triple Barrel (Ad-8c-4s-2h-7d)',
-      heroCards: [c('A', 's'), c('J', 'h')],
-      board: [c('A', 'd'), c('8', 'c'), c('4', 's'), c('2', 'h'), c('7', 'd')],
+      title: 'Caza de Faroles Top Pair vs Triple Barrel (A♠-8♠-4♣-2♥-7♦)',
+      heroCards: [c('A', 'c'), c('J', 'h')],
+      board: [c('A', 's'), c('8', 's'), c('4', 'c'), c('2', 'h'), c('7', 'd')],
       potBB: 24.0,
       spr: 1.5,
       opponentProfile: 'lag',
@@ -1208,7 +1209,7 @@ export const ACADEMY_SCENARIO_BANK: Record<AcademyCategory, QuizScenario[]> = {
         { label: 'Fold', action: 'FOLD', isCorrect: false, evLossPct: 8.9 },
         { label: 'All-in Raise', action: 'ALLIN', isCorrect: false, evLossPct: 15.2 }
       ],
-      explanationDummies: 'Todos los proyectos (espadas, 65s, 75s) fallaron en el river. Con Top Pair buen kicker y sin bloquear picas fallidas, es un Call rentable por MDF.',
+      explanationDummies: 'Todos los proyectos (picas, 65s, 75s) fallaron en el river. Con Top Pair buen kicker y sin bloquear picas fallidas, es un Call rentable por MDF.',
       leakWarning: 'Fuga Común: Foldear Top Pair automáticamente ante tres apuestas seguidas cuando fallaron todos los draws.'
     },
     {
@@ -1240,7 +1241,7 @@ export const ACADEMY_SCENARIO_BANK: Record<AcademyCategory, QuizScenario[]> = {
       id: 'bc-3',
       category: 'bluff_catch',
       categoryName: 'Bluff Catching en River',
-      title: 'Importancia de los Blockers en River (Q♠J♣ en K♠-T♠-4♦-3♣-2♠)',
+      title: 'Importancia de los Blockers en River (K♣T♥ en K♠-T♠-4♦-3♣-2♠)',
       heroCards: [c('K', 'c'), c('T', 'h')],
       board: [c('K', 's'), c('T', 's'), c('4', 'd'), c('3', 'c'), c('2', 's')],
       potBB: 28.0,
@@ -1250,7 +1251,7 @@ export const ACADEMY_SCENARIO_BANK: Record<AcademyCategory, QuizScenario[]> = {
       heroPos: 'BTN',
       villainPos: 'BB',
       villainAction: 'Completa la 3ª pica y BB Donk-Bet 75% (21 BB)',
-      correctAction: 'CALL con Dobles Top (KTh)',
+      correctAction: 'CALL con Dobles Top (K♣T♥)',
       correctSizing: '21 BB',
       gtoFrequency: 72,
       options: [
@@ -1289,30 +1290,1338 @@ export const ACADEMY_SCENARIO_BANK: Record<AcademyCategory, QuizScenario[]> = {
   ]
 };
 
-const ACADEMY_QUEUE_KEY = 'lab_studio_academy_queue_v1';
+const BASE_SPOTS_COUNT_END_ANCHOR = true;
+void BASE_SPOTS_COUNT_END_ANCHOR;
 
-function shuffleArray<T>(arr: T[]): T[] {
-  const copy = [...arr];
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-  }
-  return copy;
+// Expansión curada por categoría (llevando cada una a 8+ escenarios estratégicamente únicos -> 96+ base × permutación de palos)
+const EXTRA_ACADEMY_SPOTS: Record<AcademyCategory, QuizScenario[]> = {
+  dry_flop: [
+    {
+      id: 'dry-5',
+      category: 'dry_flop',
+      categoryName: 'Flop Seco (Dry)',
+      title: 'C-Bet Rango en J♦-6♣-2♠ con KQo (BTN vs BB)',
+      heroCards: [c('K', 's'), c('Q', 'h')],
+      board: [c('J', 'd'), c('6', 'c'), c('2', 's')],
+      potBB: 6.5,
+      spr: 14,
+      opponentProfile: 'regular',
+      potType: 'srp',
+      heroPos: 'BTN',
+      villainPos: 'BB',
+      villainAction: 'BB Checks',
+      correctAction: 'BET 33%',
+      correctSizing: '2.1 BB',
+      gtoFrequency: 84,
+      options: [
+        { label: 'Bet 33% Pot (2.1 BB)', action: 'BET_33', isCorrect: true, evLossPct: 0 },
+        { label: 'Bet 80% Pot (5.2 BB)', action: 'BET_80', isCorrect: false, evLossPct: 6.5 },
+        { label: 'Check Behind', action: 'CHECK', isCorrect: false, evLossPct: 3.9 }
+      ],
+      explanationDummies: 'Con dos overcards, proyecto backdoor de escalera y gran ventaja de rango en J62r, una C-bet pequeña del 33% genera folds inmediatos y conserva 6 outs limpios.',
+      leakWarning: 'Fuga Común: Apostar 75%+ con aire y overcards en flops arcoíris desconectados.'
+    },
+    {
+      id: 'dry-6',
+      category: 'dry_flop',
+      categoryName: 'Flop Seco (Dry)',
+      title: 'Overpair JJ en T♣-5♦-2♥ (CO vs BB)',
+      heroCards: [c('J', 's'), c('J', 'h')],
+      board: [c('T', 'c'), c('5', 'd'), c('2', 'h')],
+      potBB: 6.0,
+      spr: 15,
+      opponentProfile: 'regular',
+      potType: 'srp',
+      heroPos: 'CO',
+      villainPos: 'BB',
+      villainAction: 'BB Checks',
+      correctAction: 'BET 50% - 66%',
+      correctSizing: '3.5 BB',
+      gtoFrequency: 80,
+      options: [
+        { label: 'Bet 55% Pot Valor (3.5 BB)', action: 'BET_55', isCorrect: true, evLossPct: 0 },
+        { label: 'Check Slowplay', action: 'CHECK', isCorrect: false, evLossPct: 6.2 },
+        { label: 'All-in Overbet (95 BB)', action: 'ALLIN', isCorrect: false, evLossPct: 22.0 }
+      ],
+      explanationDummies: 'Tienes Overpair limpia en mesa seca T52r. Extrae valor claro de cualquier Diez (AT, KT, QT) y parejas medias con una apuesta media de ~55%.',
+      leakWarning: 'Fuga Común: Hacer slowplay en flops bajos donde cualquier K o A en turn complica tu mano.'
+    },
+    {
+      id: 'dry-7',
+      category: 'dry_flop',
+      categoryName: 'Flop Seco (Dry)',
+      title: 'Check Control con 66 en A♠-K♦-4♣ (MP vs BTN)',
+      heroCards: [c('6', 'h'), c('6', 'c')],
+      board: [c('A', 's'), c('K', 'd'), c('4', 'c')],
+      potBB: 6.5,
+      spr: 14,
+      opponentProfile: 'regular',
+      potType: 'srp',
+      heroPos: 'MP',
+      villainPos: 'BTN',
+      villainAction: 'Hero actúa OOP primero',
+      correctAction: 'CHECK (Showdown Value)',
+      correctSizing: '0 BB',
+      gtoFrequency: 89,
+      options: [
+        { label: 'Check Control', action: 'CHECK', isCorrect: true, evLossPct: 0 },
+        { label: 'Bet 75% Pot Farol (4.9 BB)', action: 'BET_75', isCorrect: false, evLossPct: 9.4 },
+        { label: 'Bet 33% Pot (2.1 BB)', action: 'BET_33', isCorrect: false, evLossPct: 4.1 }
+      ],
+      explanationDummies: 'En AK4r el rango de BTN contiene muchos Ax y Kx. Convertir 66 en farol hace foldear manos peores y solo te pagan los que te aplastan; juega Check para realizar tus 2 outs y valor de showdown.',
+      leakWarning: 'Fuga Común: Apostar parejas medias bajo boards con dos overcards altas OOP.'
+    },
+    {
+      id: 'dry-8',
+      category: 'dry_flop',
+      categoryName: 'Flop Seco (Dry)',
+      title: 'Delay / Probe o C-Bet 33% con A9s en K♣-8♦-3♥',
+      heroCards: [c('A', 'h'), c('9', 'h')],
+      board: [c('K', 'c'), c('8', 'd'), c('3', 'h')],
+      potBB: 5.5,
+      spr: 16,
+      opponentProfile: 'nit',
+      potType: 'srp',
+      heroPos: 'BTN',
+      villainPos: 'BB (Nit)',
+      villainAction: 'BB Checks',
+      correctAction: 'BET 33%',
+      correctSizing: '1.8 BB',
+      gtoFrequency: 78,
+      options: [
+        { label: 'Bet 33% Pot (1.8 BB)', action: 'BET_33', isCorrect: true, evLossPct: 0 },
+        { label: 'Overbet 125% (6.8 BB)', action: 'BET_125', isCorrect: false, evLossPct: 8.3 },
+        { label: 'Fold sin apuesta', action: 'FOLD', isCorrect: false, evLossPct: 18.0 }
+      ],
+      explanationDummies: 'Ante un Nit en BB en K83r, su rango falla este flop >60% de las veces. Con 1/3 del bote tomas el bote ahora y retienes backdoors + As vivo.',
+      leakWarning: 'Fuga Común: Desperdiciar fold equity gratuita contra jugadores pasivos en boards con Rey alto.'
+    }
+  ],
+  wet_flop: [
+    {
+      id: 'wet-5',
+      category: 'wet_flop',
+      categoryName: 'Flop Coordinado (Wet)',
+      title: 'Valor Fuerte con Dobles QJ en Q♦-J♦-7♣ (BTN vs BB)',
+      heroCards: [c('Q', 's'), c('J', 'c')],
+      board: [c('Q', 'd'), c('J', 'd'), c('7', 'c')],
+      potBB: 6.5,
+      spr: 14,
+      opponentProfile: 'fish',
+      potType: 'srp',
+      heroPos: 'BTN',
+      villainPos: 'BB (Fish)',
+      villainAction: 'BB Checks',
+      correctAction: 'BET 75%',
+      correctSizing: '4.9 BB',
+      gtoFrequency: 86,
+      options: [
+        { label: 'Bet 75% Pot (4.9 BB)', action: 'BET_75', isCorrect: true, evLossPct: 0 },
+        { label: 'Bet 25% Pot (1.6 BB)', action: 'BET_25', isCorrect: false, evLossPct: 6.4 },
+        { label: 'Check Behind', action: 'CHECK', isCorrect: false, evLossPct: 9.8 }
+      ],
+      explanationDummies: 'En QJ7 dos diamantes hay proyectos de color, T9, KT, K9 y 98. Contra un Fish, cobra el precio máximo (75%) mientras tu Top Two Pair es dominante.',
+      leakWarning: 'Fuga Común: Dar cartas gratis en boards súper dinámicos.'
+    },
+    {
+      id: 'wet-6',
+      category: 'wet_flop',
+      categoryName: 'Flop Coordinado (Wet)',
+      title: 'Escalera Flopeada T9s en J♣-8♣-7♠ (CO vs BB)',
+      heroCards: [c('T', 'h'), c('9', 'h')],
+      board: [c('J', 'c'), c('8', 'c'), c('7', 's')],
+      potBB: 6.0,
+      spr: 15,
+      opponentProfile: 'regular',
+      potType: 'srp',
+      heroPos: 'CO',
+      villainPos: 'BB',
+      villainAction: 'BB Checks',
+      correctAction: 'BET 75% - 85%',
+      correctSizing: '4.8 BB',
+      gtoFrequency: 85,
+      options: [
+        { label: 'Bet Grande 75-85% (4.8 BB)', action: 'BET_80', isCorrect: true, evLossPct: 0 },
+        { label: 'Bet 20% Minúscula (1.2 BB)', action: 'BET_20', isCorrect: false, evLossPct: 7.2 },
+        { label: 'Check Behind', action: 'CHECK', isCorrect: false, evLossPct: 10.5 }
+      ],
+      explanationDummies: 'Tienes las Nuts actuales (Escalera al J) en un tablero cargado de tréboles y dobles parejas. Construye el bote grande de inmediato antes de que caiga un 4º trebol o carta doblada.',
+      leakWarning: 'Fuga Común: Jugar lento las nuts en texturas coordinadas esperando al Turn.'
+    },
+    {
+      id: 'wet-7',
+      category: 'wet_flop',
+      categoryName: 'Flop Coordinado (Wet)',
+      title: 'Defensa Check-Call con OESD + Backdoor (Q♠J♠ en T♦-9♣-3♠)',
+      heroCards: [c('Q', 's'), c('J', 's')],
+      board: [c('T', 'd'), c('9', 'c'), c('3', 's')],
+      potBB: 11.0,
+      spr: 8.5,
+      opponentProfile: 'regular',
+      potType: 'srp',
+      heroPos: 'BB',
+      villainPos: 'CO',
+      villainAction: 'CO apuesta 7.0 BB',
+      correctAction: 'CALL (8 Outs + 2 Overcards)',
+      correctSizing: '7.0 BB',
+      gtoFrequency: 83,
+      options: [
+        { label: 'Call Con Proyecto Fuerte (7.0 BB)', action: 'CALL', isCorrect: true, evLossPct: 0 },
+        { label: 'Fold Asustado', action: 'FOLD', isCorrect: false, evLossPct: 14.2 },
+        { label: 'Check-Raise All-in (95 BB)', action: 'ALLIN', isCorrect: false, evLossPct: 11.6 }
+      ],
+      explanationDummies: 'Con QJ tienes escalera abierta (cualquier K u 8), dos overcards y pica backdoor (~42% equity contra top pair). Pagar mantiene todas tus implícitas IP/OOP sin aislarte contra sets.',
+      leakWarning: 'Fuga Común: Foldear proyectos de 10-14 outs frente a una apuesta estándar en flop.'
+    },
+    {
+      id: 'wet-8',
+      category: 'wet_flop',
+      categoryName: 'Flop Coordinado (Wet)',
+      title: 'Control con Aire Total sin Proyecto (A♦4♠ en 9♣-8♣-6♥)',
+      heroCards: [c('A', 'd'), c('4', 's')],
+      board: [c('9', 'c'), c('8', 'c'), c('6', 'h')],
+      potBB: 6.5,
+      spr: 14,
+      opponentProfile: 'lag',
+      potType: 'srp',
+      heroPos: 'EP (UTG)',
+      villainPos: 'BB (LAG)',
+      villainAction: 'BB Checks',
+      correctAction: 'CHECK BEHIND (Control)',
+      correctSizing: '0 BB',
+      gtoFrequency: 91,
+      options: [
+        { label: 'Check Behind (No Bluff Aquí)', action: 'CHECK', isCorrect: true, evLossPct: 0 },
+        { label: 'Bet 75% Farol Puro (4.9 BB)', action: 'BET_75', isCorrect: false, evLossPct: 8.8 },
+        { label: 'Overbet 125% (8.1 BB)', action: 'BET_125', isCorrect: false, evLossPct: 12.1 }
+      ],
+      explanationDummies: 'El tablero 986 two-tone conecta directamente con el rango defensor de la BB. A4o sin tréboles tiene mínima equity y sufrirá muchísimo ante check-raises de un LAG.',
+      leakWarning: 'Fuga Común: Disparar con As alto sin backdoors en boards conectados medios.'
+    }
+  ],
+  monotone_flop: [
+    {
+      id: 'mono-5',
+      category: 'monotone_flop',
+      categoryName: 'Flop Monótono (3 del mismo palo)',
+      title: 'Nut Flush Draw Solitario A♥K♣ en Q♥-7♥-3♥ (BTN vs BB)',
+      heroCards: [c('A', 'h'), c('K', 'c')],
+      board: [c('Q', 'h'), c('7', 'h'), c('3', 'h')],
+      potBB: 6.5,
+      spr: 14,
+      opponentProfile: 'regular',
+      potType: 'srp',
+      heroPos: 'BTN',
+      villainPos: 'BB',
+      villainAction: 'BB Checks',
+      correctAction: 'BET 33% (Semi-Bluff + Nut Blocker)',
+      correctSizing: '2.1 BB',
+      gtoFrequency: 79,
+      options: [
+        { label: 'Bet 33% Pot Semi-Bluff (2.1 BB)', action: 'BET_33', isCorrect: true, evLossPct: 0 },
+        { label: 'Overbet Shove (95 BB)', action: 'ALLIN', isCorrect: false, evLossPct: 18.4 },
+        { label: 'Fold Directo', action: 'FOLD', isCorrect: false, evLossPct: 24.0 }
+      ],
+      explanationDummies: 'Tener el As de corazones bloquea el Nut Flush del rival y te da 9 outs al color máximo + K vivo. Una apuesta pequeña del 33% presiona eficazmente a todo el rango de BB.',
+      leakWarning: 'Fuga Común: Sobredimensionar apuestas cuando llevas el As blocker en flop monótono.'
+    },
+    {
+      id: 'mono-6',
+      category: 'monotone_flop',
+      categoryName: 'Flop Monótono (3 del mismo palo)',
+      title: 'Set de Ochos Sin Trébol en J♣-8♣-4♣ vs Donk Bet',
+      heroCards: [c('8', 's'), c('8', 'd')],
+      board: [c('J', 'c'), c('8', 'c'), c('4', 'c')],
+      potBB: 10.5,
+      spr: 9,
+      opponentProfile: 'fish',
+      potType: 'srp',
+      heroPos: 'CO',
+      villainPos: 'BB (Fish)',
+      villainAction: 'BB apuesta de cara 4 BB (Donk Bet)',
+      correctAction: 'CALL (Evaluar Turn / Full House Outs)',
+      correctSizing: '4.0 BB',
+      gtoFrequency: 76,
+      options: [
+        { label: 'Call Control + Redraws (4.0 BB)', action: 'CALL', isCorrect: true, evLossPct: 0 },
+        { label: 'Fold Set Medio', action: 'FOLD', isCorrect: false, evLossPct: 22.0 },
+        { label: 'Raise All-in 95 BB', action: 'ALLIN', isCorrect: false, evLossPct: 10.2 }
+      ],
+      explanationDummies: 'Tienes 34% de probabilidad de ligar Full House o Poker en turn/river si te enfrentas a un color hecho, y aplastas cualquier Jx o draw con el A♣/K♣. Paga sin inflar all-in prematuro.',
+      leakWarning: 'Fuga Común: Ir all-in gigante OOP/IP con set sin redraw superior ante agresión en tablero monocolor.'
+    },
+    {
+      id: 'mono-7',
+      category: 'monotone_flop',
+      categoryName: 'Flop Monótono (3 del mismo palo)',
+      title: 'Top Pair + 2º Draw al Color (K♦Q♠ en K♠-9♠-5♠)',
+      heroCards: [c('K', 'd'), c('Q', 's')],
+      board: [c('K', 's'), c('9', 's'), c('5', 's')],
+      potBB: 6.5,
+      spr: 14,
+      opponentProfile: 'regular',
+      potType: 'srp',
+      heroPos: 'BTN',
+      villainPos: 'BB',
+      villainAction: 'BB Checks',
+      correctAction: 'BET 33%',
+      correctSizing: '2.1 BB',
+      gtoFrequency: 82,
+      options: [
+        { label: 'Bet Pequeña 33% (2.1 BB)', action: 'BET_33', isCorrect: true, evLossPct: 0 },
+        { label: 'Bet 85% Pot (5.5 BB)', action: 'BET_85', isCorrect: false, evLossPct: 6.8 },
+        { label: 'Fold', action: 'FOLD', isCorrect: false, evLossPct: 30.0 }
+      ],
+      explanationDummies: 'Top Pair KQ + Q♠ te protege contra colores menores y cobra valor cómodo de 9x, K-peor y pares con una pica usando el sizing pequeño de 1/3.',
+      leakWarning: 'Fuga Común: Apostar 75%+ en flops monocolor aislando tu Top Pair contra colores.'
+    },
+    {
+      id: 'mono-8',
+      category: 'monotone_flop',
+      categoryName: 'Flop Monótono (3 del mismo palo)',
+      title: 'Check-Fold Limpio OOP con 99 sin Pica en A♠-Q♠-6♠',
+      heroCards: [c('9', 'h'), c('9', 'd')],
+      board: [c('A', 's'), c('Q', 's'), c('6', 's')],
+      potBB: 11.5,
+      spr: 8,
+      opponentProfile: 'regular',
+      potType: 'srp',
+      heroPos: 'BB',
+      villainPos: 'UTG',
+      villainAction: 'BB Checks, UTG apuesta 5.5 BB (50% pot)',
+      correctAction: 'FOLD Disciplinado',
+      correctSizing: '0 BB',
+      gtoFrequency: 94,
+      options: [
+        { label: 'Fold Limpio', action: 'FOLD', isCorrect: true, evLossPct: 0 },
+        { label: 'Call Sin Picas (5.5 BB)', action: 'CALL', isCorrect: false, evLossPct: 8.6 },
+        { label: 'Check-Raise Bluff (18 BB)', action: 'RAISE', isCorrect: false, evLossPct: 16.5 }
+      ],
+      explanationDummies: 'Frente a UTG que mantiene todas las combinaciones de Ax, Qx y As♠Xs en un tablero A-Q-6 monótono, 99 sin pica apenas tiene 2 outs y cero backdoors útiles.',
+      leakWarning: 'Fuga Común: Pagar apuestas en boards A-high monótonos con parejas bajas sin carta del palo.'
+    }
+  ],
+  paired_flop: [
+    {
+      id: 'pair-5',
+      category: 'paired_flop',
+      categoryName: 'Flop Emparejado',
+      title: 'C-Bet Rango en 8♠-8♥-2♦ con AQo (BTN vs BB)',
+      heroCards: [c('A', 'd'), c('Q', 'c')],
+      board: [c('8', 's'), c('8', 'h'), c('2', 'd')],
+      potBB: 6.0,
+      spr: 15,
+      opponentProfile: 'regular',
+      potType: 'srp',
+      heroPos: 'BTN',
+      villainPos: 'BB',
+      villainAction: 'BB Checks',
+      correctAction: 'BET 33%',
+      correctSizing: '2.0 BB',
+      gtoFrequency: 86,
+      options: [
+        { label: 'Bet 33% Pot (2.0 BB)', action: 'BET_33', isCorrect: true, evLossPct: 0 },
+        { label: 'Bet 90% Pot (5.4 BB)', action: 'BET_90', isCorrect: false, evLossPct: 7.4 },
+        { label: 'Check Behind', action: 'CHECK', isCorrect: false, evLossPct: 3.7 }
+      ],
+      explanationDummies: 'En flops emparejados bajos el rango del agresor domina por overpairs y broadways. Con AQ apuesta 33% para negar equity a manos como K9, QJ o T7.',
+      leakWarning: 'Fuga Común: Usar tamaños de apuesta grandes cuando un 33% derriba exactamente lo mismo.'
+    },
+    {
+      id: 'pair-6',
+      category: 'paired_flop',
+      categoryName: 'Flop Emparejado',
+      title: 'Trío en 5♣-5♦-K♠ con A5s (SB vs BB)',
+      heroCards: [c('A', 's'), c('5', 's')],
+      board: [c('5', 'c'), c('5', 'd'), c('K', 's')],
+      potBB: 6.5,
+      spr: 14,
+      opponentProfile: 'regular',
+      potType: 'srp',
+      heroPos: 'SB',
+      villainPos: 'BB',
+      villainAction: 'Hero en SB actúa primero',
+      correctAction: 'BET 33% (Construir Bote Sin Espantar)',
+      correctSizing: '2.1 BB',
+      gtoFrequency: 81,
+      options: [
+        { label: 'Bet 33% Pot (2.1 BB)', action: 'BET_33', isCorrect: true, evLossPct: 0 },
+        { label: 'Overbet 150% (9.8 BB)', action: 'BET_150', isCorrect: false, evLossPct: 9.2 },
+        { label: 'Check-Fold', action: 'FOLD', isCorrect: false, evLossPct: 40.0 }
+      ],
+      explanationDummies: 'Con Trío + Kicker As y Rey en mesa, apostar 33% hace que todos los Reyes (KQ, KJ, KT), pares medios y floats paguen cómodamente para jugar por stacks en turn y river.',
+      leakWarning: 'Fuga Común: Hacer overbets en flop de tablero emparejado expulsando cualquier Kx o pareja menor.'
+    },
+    {
+      id: 'pair-7',
+      category: 'paired_flop',
+      categoryName: 'Flop Emparejado',
+      title: 'Overpair AA en Q♣-Q♥-6♦ (UTG vs BTN)',
+      heroCards: [c('A', 's'), c('A', 'd')],
+      board: [c('Q', 'c'), c('Q', 'h'), c('6', 'd')],
+      potBB: 6.5,
+      spr: 14,
+      opponentProfile: 'lag',
+      potType: 'srp',
+      heroPos: 'EP (UTG)',
+      villainPos: 'BTN (LAG)',
+      villainAction: 'Hero actúa OOP frente a BTN agresivo',
+      correctAction: 'BET 33% (Valor Protegido)',
+      correctSizing: '2.1 BB',
+      gtoFrequency: 79,
+      options: [
+        { label: 'Bet 33% Pot (2.1 BB)', action: 'BET_33', isCorrect: true, evLossPct: 0 },
+        { label: 'Check-Fold OOP', action: 'FOLD', isCorrect: false, evLossPct: 36.0 },
+        { label: 'Overbet 130% (8.5 BB)', action: 'BET_130', isCorrect: false, evLossPct: 7.1 }
+      ],
+      explanationDummies: 'Es poco frecuente que BTN lleve una Dama; con AA extraes de 77-JJ, 6x y floats de backdoor con una apuesta pequeña y balanceada.',
+      leakWarning: 'Fuga Común: Pánico injustificado con Overpair en board emparejado alto.'
+    },
+    {
+      id: 'pair-8',
+      category: 'paired_flop',
+      categoryName: 'Flop Emparejado',
+      title: 'Check-Raise Explotativo vs C-Bet Automática con 9♠8♠ en 4♥-4♣-7♠',
+      heroCards: [c('9', 's'), c('8', 's')],
+      board: [c('4', 'h'), c('4', 'c'), c('7', 's')],
+      potBB: 8.5,
+      spr: 11,
+      opponentProfile: 'lag',
+      potType: 'srp',
+      heroPos: 'BB',
+      villainPos: 'BTN (LAG)',
+      villainAction: 'BTN C-betea 2.0 BB automáticamente en 447',
+      correctAction: 'CALL (Dos Overcards + Backdoors + Gutshot)',
+      correctSizing: '2.0 BB',
+      gtoFrequency: 77,
+      options: [
+        { label: 'Call Defend en Posición Relativa (2.0 BB)', action: 'CALL', isCorrect: true, evLossPct: 0 },
+        { label: 'Fold 2 Overcards + Backdoors', action: 'FOLD', isCorrect: false, evLossPct: 5.8 },
+        { label: 'All-in Check-Raise (96 BB)', action: 'ALLIN', isCorrect: false, evLossPct: 24.0 }
+      ],
+      explanationDummies: 'Frente a un sizing barato (2 BB en 6.5 BB), 98s tiene gutshot al T/6, dos overcards y proyecto backdoor de picas; pagar realiza altísima equity contra el amplio rango de C-Bet del Botón.',
+      leakWarning: 'Fuga Común: Sobre-foldear en BB contra micro C-bets en boards bajos emparejados.'
+    }
+  ],
+  three_bet_pot: [
+    {
+      id: '3b-5',
+      category: 'three_bet_pot',
+      categoryName: 'Botes 3-Bet',
+      title: 'Overpair AA en Flop Coordinado J♥-9♥-6♠ (BB vs CO)',
+      heroCards: [c('A', 's'), c('A', 'c')],
+      board: [c('J', 'h'), c('9', 'h'), c('6', 's')],
+      potBB: 22.0,
+      spr: 4.0,
+      opponentProfile: 'regular',
+      potType: '3bet',
+      heroPos: 'BB',
+      villainPos: 'CO',
+      villainAction: 'Hero 3-Bet en BB, CO pagó IP',
+      correctAction: 'BET 50% Pot (Valor + Protección)',
+      correctSizing: '11.0 BB',
+      gtoFrequency: 81,
+      options: [
+        { label: 'Bet 50% Pot (11.0 BB)', action: 'BET_50', isCorrect: true, evLossPct: 0 },
+        { label: 'Check Pasivo', action: 'CHECK', isCorrect: false, evLossPct: 7.4 },
+        { label: 'Fold ante check', action: 'FOLD', isCorrect: false, evLossPct: 45.0 }
+      ],
+      explanationDummies: 'En un bote 3-bet coordinado con SPR 4, AA necesita cobrar valor directo y negar equity a corazones y proyectos tipo KQ/QTs/T8s.',
+      leakWarning: 'Fuga Común: Jugar demasiado pasivo con Overpairs en botes 3-bet coordinados.'
+    },
+    {
+      id: '3b-6',
+      category: 'three_bet_pot',
+      categoryName: 'Botes 3-Bet',
+      title: 'Top Pair AQ en Q♣-7♠-2♦ (BTN vs CO 3-Bet)',
+      heroCards: [c('A', 'd'), c('Q', 's')],
+      board: [c('Q', 'c'), c('7', 's'), c('2', 'd')],
+      potBB: 20.5,
+      spr: 4.4,
+      opponentProfile: 'regular',
+      potType: '3bet',
+      heroPos: 'BTN',
+      villainPos: 'CO',
+      villainAction: 'CO hizo Check al 3-bettor Hero',
+      correctAction: 'BET 33%',
+      correctSizing: '6.8 BB',
+      gtoFrequency: 85,
+      options: [
+        { label: 'Bet 33% Pot (6.8 BB)', action: 'BET_33', isCorrect: true, evLossPct: 0 },
+        { label: 'Overbet Shove (90 BB)', action: 'ALLIN', isCorrect: false, evLossPct: 11.2 },
+        { label: 'Check Behind', action: 'CHECK', isCorrect: false, evLossPct: 6.1 }
+      ],
+      explanationDummies: 'En board Q72r dentro de un bote 3-bet, un 33% presiona pares 88-JJ y KQ mientras prepara el stack ideal para meter el resto entre Turn y River.',
+      leakWarning: 'Fuga Común: Overbetear flops secos en botes 3-Bet cuando SPR ya permite ir all-in en 3 calles pequeñas.'
+    },
+    {
+      id: '3b-7',
+      category: 'three_bet_pot',
+      categoryName: 'Botes 3-Bet',
+      title: 'Defensa IP con AKs sin Ligar en T♠-6♠-4♦ (BTN vs SB)',
+      heroCards: [c('A', 's'), c('K', 's')],
+      board: [c('T', 's'), c('6', 's'), c('4', 'd')],
+      potBB: 25.0,
+      spr: 3.6,
+      opponentProfile: 'regular',
+      potType: '3bet',
+      heroPos: 'BTN',
+      villainPos: 'SB',
+      villainAction: 'SB (3-Bettor) apuesta 8.0 BB',
+      correctAction: 'CALL (Nut Flush Draw + 2 Overcards)',
+      correctSizing: '8.0 BB',
+      gtoFrequency: 82,
+      options: [
+        { label: 'Call IP con Nut Draw (~54% Equity)', action: 'CALL', isCorrect: true, evLossPct: 0 },
+        { label: 'Fold As-Rey Suited', action: 'FOLD', isCorrect: false, evLossPct: 21.0 },
+        { label: 'Check Behind (sin opción)', action: 'CHECK', isCorrect: false, evLossPct: 18.0 }
+      ],
+      explanationDummies: 'Tienes proyecto máximo al color + 6 outs de A/K (~54% equity total). En posición, pagar mantiene los faroles del rival y domina todo proyecto inferior.',
+      leakWarning: 'Fuga Común: Foldear AKs con proyecto de color máximo frente a una C-Bet en bote 3-bet.'
+    },
+    {
+      id: '3b-8',
+      category: 'three_bet_pot',
+      categoryName: 'Botes 3-Bet',
+      title: 'Rendición OOP con KQo sin Pica en A♠-9♠-7♣ (SB vs BTN)',
+      heroCards: [c('K', 'd'), c('Q', 'h')],
+      board: [c('A', 's'), c('9', 's'), c('7', 'c')],
+      potBB: 21.0,
+      spr: 4.2,
+      opponentProfile: 'lag',
+      potType: '3bet',
+      heroPos: 'SB',
+      villainPos: 'BTN (LAG)',
+      villainAction: 'Hero hizo Check OOP, BTN apuesta 10 BB',
+      correctAction: 'FOLD Limpio OOP',
+      correctSizing: '0 BB',
+      gtoFrequency: 93,
+      options: [
+        { label: 'Fold Sin Equity OOP', action: 'FOLD', isCorrect: true, evLossPct: 0 },
+        { label: 'Call Flotando Sin Posición (10 BB)', action: 'CALL', isCorrect: false, evLossPct: 9.5 },
+        { label: 'Check-Raise All-in Farol', action: 'ALLIN', isCorrect: false, evLossPct: 25.0 }
+      ],
+      explanationDummies: 'En tablero con As y proyecto de picas, tu KQ sin picas apenas tiene equity y carece de posición contra el rango lleno de Ax de BTN.',
+      leakWarning: 'Fuga Común: Flotar fuera de posición en botes 3-Bet con overcards sin proyecto.'
+    }
+  ],
+  squeeze: [
+    {
+      id: 'sqz-5',
+      category: 'squeeze',
+      categoryName: 'Squeeze Spots',
+      title: 'Squeeze Valor Fuerte con KK desde BB (CO Open + BTN Call)',
+      heroCards: [c('K', 's'), c('K', 'h')],
+      board: [],
+      potBB: 6.5,
+      spr: 15,
+      opponentProfile: 'regular',
+      potType: 'squeeze',
+      heroPos: 'BB',
+      villainPos: 'CO + BTN',
+      villainAction: 'CO abre 2.5 BB, BTN paga 2.5 BB',
+      correctAction: 'SQUEEZE Raise a 13.5 BB',
+      correctSizing: '13.5 BB',
+      gtoFrequency: 99,
+      options: [
+        { label: 'Squeeze a 13.5 BB', action: 'RAISE_135', isCorrect: true, evLossPct: 0 },
+        { label: 'Flat Call Trampa (1.5 BB)', action: 'CALL', isCorrect: false, evLossPct: 16.5 },
+        { label: 'Fold', action: 'FOLD', isCorrect: false, evLossPct: 50.0 }
+      ],
+      explanationDummies: 'Jugar KK OOP en bote 3-way es un desastre estratégico. Sube grande a 13.5 BB para construir un bote masivo ahora y eliminar a los callers con cartas vivas.',
+      leakWarning: 'Fuga Común: Hacer cold call trampa con KK/QQ para dejar entrar al 3er jugador.'
+    },
+    {
+      id: 'sqz-6',
+      category: 'squeeze',
+      categoryName: 'Squeeze Spots',
+      title: 'Squeeze Polarizado desde BTN con A5s (HJ Open + CO Call)',
+      heroCards: [c('A', 'c'), c('5', 'c')],
+      board: [],
+      potBB: 6.5,
+      spr: 15,
+      opponentProfile: 'regular',
+      potType: 'squeeze',
+      heroPos: 'BTN',
+      villainPos: 'HJ + CO',
+      villainAction: 'HJ abre 2.5 BB, CO paga 2.5 BB',
+      correctAction: 'SQUEEZE IP a 11.5 BB',
+      correctSizing: '11.5 BB',
+      gtoFrequency: 74,
+      options: [
+        { label: 'Squeeze IP a 11.5 BB', action: 'RAISE_115', isCorrect: true, evLossPct: 0 },
+        { label: 'Fold Pre', action: 'FOLD', isCorrect: false, evLossPct: 4.9 },
+        { label: 'Open Shove 100 BB', action: 'ALLIN', isCorrect: false, evLossPct: 33.0 }
+      ],
+      explanationDummies: 'A5s bloquea AA/AK del abridor y mantiene excelente jugabilidad en posición si recibes call. En BTN, 11.5 BB mete presión matemática a ambos rangos.',
+      leakWarning: 'Fuga Común: No incluir Ases suited pequeños en tu rango de Squeeze en posición.'
+    },
+    {
+      id: 'sqz-7',
+      category: 'squeeze',
+      categoryName: 'Squeeze Spots',
+      title: 'Squeeze Value OOP con AQs (MP Open + BTN Call, Hero SB)',
+      heroCards: [c('A', 'd'), c('Q', 'd')],
+      board: [],
+      potBB: 6.5,
+      spr: 15,
+      opponentProfile: 'lag',
+      potType: 'squeeze',
+      heroPos: 'SB',
+      villainPos: 'MP + BTN',
+      villainAction: 'MP abre 2.5 BB, BTN paga 2.5 BB',
+      correctAction: 'SQUEEZE a 13.5 BB',
+      correctSizing: '13.5 BB',
+      gtoFrequency: 89,
+      options: [
+        { label: 'Squeeze Raise 13.5 BB', action: 'RAISE_135', isCorrect: true, evLossPct: 0 },
+        { label: 'Cold Call 2 BB en SB', action: 'CALL', isCorrect: false, evLossPct: 8.7 },
+        { label: 'Fold', action: 'FOLD', isCorrect: false, evLossPct: 22.0 }
+      ],
+      explanationDummies: 'La estrategia óptima en SB frente a open y call es Squeeze o Fold casi 100% del tiempo. AQs es mano estrella para cobrar el dinero muerto preflop.',
+      leakWarning: 'Fuga Común: Completar SB dejando que BB entre con precio barato a un bote 4-way OOP.'
+    },
+    {
+      id: 'sqz-8',
+      category: 'squeeze',
+      categoryName: 'Squeeze Spots',
+      title: 'Call en BB Multiway con Pareja Pequeña 55 (UTG Open + CO Call)',
+      heroCards: [c('5', 'h'), c('5', 'd')],
+      board: [],
+      potBB: 6.5,
+      spr: 15,
+      opponentProfile: 'regular',
+      potType: 'srp',
+      heroPos: 'BB',
+      villainPos: 'UTG + CO',
+      villainAction: 'UTG abre 2.5 BB, CO paga 2.5 BB',
+      correctAction: 'CALL 1.5 BB (Set Mining Implied Odds)',
+      correctSizing: '1.5 BB',
+      gtoFrequency: 94,
+      options: [
+        { label: 'Call Barato 1.5 BB (Set Mine)', action: 'CALL', isCorrect: true, evLossPct: 0 },
+        { label: 'Squeeze Bluff 14 BB', action: 'RAISE_14', isCorrect: false, evLossPct: 12.6 },
+        { label: 'Fold', action: 'FOLD', isCorrect: false, evLossPct: 6.8 }
+      ],
+      explanationDummies: 'Solo necesitas poner 1.5 BB para ver un flop de 7.5 BB multiway con 98 BB detrás: unas odds implícitas doradas para cazar un trío (Set Mining). Nunca conviertas 55 en farol de squeeze.',
+      leakWarning: 'Fuga Común: Foldear pares pequeños en BB teniendo precio multiway 5:1.'
+    }
+  ],
+  rol: [
+    {
+      id: 'rol-5',
+      category: 'rol',
+      categoryName: 'ROL (Raise Over Limpers)',
+      title: 'Aislamiento Posicional con KJo (BTN vs CO Limper)',
+      heroCards: [c('K', 'c'), c('J', 'd')],
+      board: [],
+      potBB: 2.5,
+      spr: 40,
+      opponentProfile: 'fish',
+      potType: 'srp',
+      heroPos: 'BTN',
+      villainPos: 'CO (Fish)',
+      villainAction: 'CO limpia 1.0 BB',
+      correctAction: 'ROL Raise a 4.0 BB',
+      correctSizing: '4.0 BB',
+      gtoFrequency: 92,
+      options: [
+        { label: 'ROL Raise 4.0 BB', action: 'RAISE_40', isCorrect: true, evLossPct: 0 },
+        { label: 'Over-Limp 1 BB', action: 'CALL', isCorrect: false, evLossPct: 6.5 },
+        { label: 'Fold', action: 'FOLD', isCorrect: false, evLossPct: 9.8 }
+      ],
+      explanationDummies: 'En Botón con KJo aíslate a 4 BB para jugar heads-up con posición frente al rango débil y capeado del limper.',
+      leakWarning: 'Fuga Común: Hacer limp detrás con broadways permitiendo ver flop barato a las ciegas.'
+    },
+    {
+      id: 'rol-6',
+      category: 'rol',
+      categoryName: 'ROL (Raise Over Limpers)',
+      title: 'ROL Grande con AKo ante 2 Limpers desde BB',
+      heroCards: [c('A', 's'), c('K', 'd')],
+      board: [],
+      potBB: 3.5,
+      spr: 28,
+      opponentProfile: 'fish',
+      potType: 'srp',
+      heroPos: 'BB',
+      villainPos: 'MP + CO (Limpers)',
+      villainAction: 'MP y CO limpean 1 BB, SB foldea',
+      correctAction: 'ROL Raise Fuerte a 6.0 BB',
+      correctSizing: '6.0 BB',
+      gtoFrequency: 97,
+      options: [
+        { label: 'ROL Raise 6.0 BB', action: 'RAISE_60', isCorrect: true, evLossPct: 0 },
+        { label: 'Check OOP sin subir', action: 'CHECK', isCorrect: false, evLossPct: 14.5 },
+        { label: 'Min-Raise a 2.5 BB', action: 'RAISE_25', isCorrect: false, evLossPct: 7.4 }
+      ],
+      explanationDummies: 'Desde BB (fuera de posición) ante 2 limpers, sube a 6 BB (4 BB base + 1 BB por cada limper + ajuste OOP) para cobrar valor máximo con AKo.',
+      leakWarning: 'Fuga Común: Hacer check en BB con AKo para "no arriesgar".'
+    },
+    {
+      id: 'rol-7',
+      category: 'rol',
+      categoryName: 'ROL (Raise Over Limpers)',
+      title: 'ROL IP con ATs (CO vs UTG Limper)',
+      heroCards: [c('A', 'h'), c('T', 'h')],
+      board: [],
+      potBB: 2.5,
+      spr: 40,
+      opponentProfile: 'fish',
+      potType: 'srp',
+      heroPos: 'CO',
+      villainPos: 'UTG (Limper)',
+      villainAction: 'UTG hace open limp 1 BB',
+      correctAction: 'ROL Raise a 4.0 BB',
+      correctSizing: '4.0 BB',
+      gtoFrequency: 90,
+      options: [
+        { label: 'ROL Raise 4.0 BB', action: 'RAISE_40', isCorrect: true, evLossPct: 0 },
+        { label: 'Over-Limp 1 BB', action: 'CALL', isCorrect: false, evLossPct: 5.9 },
+        { label: 'Fold', action: 'FOLD', isCorrect: false, evLossPct: 14.0 }
+      ],
+      explanationDummies: 'ATs domina los Ases y Dieces del limper recreacional y tiene enorme jugabilidad postflop con color y escalera.',
+      leakWarning: 'Fuga Común: Respetar limps tempranos dejando entrar sin castigo.'
+    },
+    {
+      id: 'rol-8',
+      category: 'rol',
+      categoryName: 'ROL (Raise Over Limpers)',
+      title: 'Fold Disciplinado con Q6o ante Limper UTG desde HJ',
+      heroCards: [c('Q', 'd'), c('6', 'c')],
+      board: [],
+      potBB: 2.5,
+      spr: 40,
+      opponentProfile: 'fish',
+      potType: 'srp',
+      heroPos: 'HJ (MP)',
+      villainPos: 'UTG (Fish)',
+      villainAction: 'UTG limpia 1 BB, quedas con 3 jugadores detrás',
+      correctAction: 'FOLD Limpio',
+      correctSizing: '0 BB',
+      gtoFrequency: 98,
+      options: [
+        { label: 'Fold Disciplinado', action: 'FOLD', isCorrect: true, evLossPct: 0 },
+        { label: 'ROL Farol a 4.5 BB', action: 'RAISE_45', isCorrect: false, evLossPct: 8.6 },
+        { label: 'Over-Limp 1 BB', action: 'CALL', isCorrect: false, evLossPct: 6.1 }
+      ],
+      explanationDummies: 'Q6o es basura offsuit dominada por cualquier K/Q/J del rango del Fish que NO foldea ante ROL. Además quedan 3 posiciones detrás por hablar.',
+      leakWarning: 'Fuga Común: Aislamiento compulsivo con manos offsuit marginales contra limpers.'
+    }
+  ],
+  open_raise: [
+    {
+      id: 'rfi-5',
+      category: 'open_raise',
+      categoryName: 'Open Raise (RFI)',
+      title: 'Apertura Sólida desde HJ (MP) con AJs',
+      heroCards: [c('A', 'h'), c('J', 'h')],
+      board: [],
+      potBB: 1.5,
+      spr: 66,
+      opponentProfile: 'regular',
+      potType: 'srp',
+      heroPos: 'HJ (MP)',
+      villainPos: 'CO + BTN + Blinds',
+      villainAction: 'UTG foldea, turno Hero en HJ',
+      correctAction: 'Open Raise a 2.5 BB',
+      correctSizing: '2.5 BB',
+      gtoFrequency: 100,
+      options: [
+        { label: 'Open Raise 2.5 BB', action: 'RAISE_25', isCorrect: true, evLossPct: 0 },
+        { label: 'Open Limp 1 BB', action: 'CALL', isCorrect: false, evLossPct: 10.4 },
+        { label: 'Fold', action: 'FOLD', isCorrect: false, evLossPct: 12.2 }
+      ],
+      explanationDummies: 'AJs es mano premium de Middle Position. Ábrela siempre a 2.5 BB para construir valor e iniciativa.',
+      leakWarning: 'Fuga Común: Limpear manos fuertes por temor al 3-Bet.'
+    },
+    {
+      id: 'rfi-6',
+      category: 'open_raise',
+      categoryName: 'Open Raise (RFI)',
+      title: 'Robo en BTN con Pareja 33 (SB + BB)',
+      heroCards: [c('3', 's'), c('3', 'h')],
+      board: [],
+      potBB: 1.5,
+      spr: 66,
+      opponentProfile: 'regular',
+      potType: 'srp',
+      heroPos: 'BTN',
+      villainPos: 'SB + BB',
+      villainAction: 'Fold hasta Botón',
+      correctAction: 'Open Raise a 2.2 - 2.5 BB',
+      correctSizing: '2.5 BB',
+      gtoFrequency: 97,
+      options: [
+        { label: 'Open Raise 2.5 BB', action: 'RAISE_25', isCorrect: true, evLossPct: 0 },
+        { label: 'Fold 33', action: 'FOLD', isCorrect: false, evLossPct: 4.4 },
+        { label: 'All-in Directo 100 BB', action: 'ALLIN', isCorrect: false, evLossPct: 42.0 }
+      ],
+      explanationDummies: 'En BTN todas las parejas de bolsillo (22+) son aperturas rentables al 100% por el equilibrio de robos y posición postflop.',
+      leakWarning: 'Fuga Común: Foldear parejas bajas en el Botón.'
+    },
+    {
+      id: 'rfi-7',
+      category: 'open_raise',
+      categoryName: 'Open Raise (RFI)',
+      title: 'Fold Disciplinado en UTG con A9o (6-Max)',
+      heroCards: [c('A', 'd'), c('9', 'c')],
+      board: [],
+      potBB: 1.5,
+      spr: 66,
+      opponentProfile: 'regular',
+      potType: 'srp',
+      heroPos: 'EP (UTG)',
+      villainPos: '5 jugadores detrás',
+      villainAction: 'Inicio de mano en UTG',
+      correctAction: 'FOLD (Fuera de Rango UTG)',
+      correctSizing: '0 BB',
+      gtoFrequency: 96,
+      options: [
+        { label: 'Fold Disciplinado', action: 'FOLD', isCorrect: true, evLossPct: 0 },
+        { label: 'Open Raise 2.5 BB', action: 'RAISE_25', isCorrect: false, evLossPct: 3.9 },
+        { label: 'Open Limp 1 BB', action: 'CALL', isCorrect: false, evLossPct: 9.1 }
+      ],
+      explanationDummies: 'En 6-Max 100 BB, UTG abre ~16-18%: ATs+ sí entra, pero A9o offsuit queda dominada por AQ/AJ/AT cuando paguen detrás.',
+      leakWarning: 'Fuga Común: Abrir demasiados Ases offsuit débiles desde UTG.'
+    },
+    {
+      id: 'rfi-8',
+      category: 'open_raise',
+      categoryName: 'Open Raise (RFI)',
+      title: 'Robo en CO con Conector Suited 76s',
+      heroCards: [c('7', 'd'), c('6', 'd')],
+      board: [],
+      potBB: 1.5,
+      spr: 66,
+      opponentProfile: 'nit',
+      potType: 'srp',
+      heroPos: 'CO',
+      villainPos: 'BTN + Blinds',
+      villainAction: 'UTG y MP foldean hasta Cutoff',
+      correctAction: 'Open Raise a 2.5 BB',
+      correctSizing: '2.5 BB',
+      gtoFrequency: 92,
+      options: [
+        { label: 'Open Raise 2.5 BB', action: 'RAISE_25', isCorrect: true, evLossPct: 0 },
+        { label: 'Fold', action: 'FOLD', isCorrect: false, evLossPct: 3.8 },
+        { label: 'Open Limp 1 BB', action: 'CALL', isCorrect: false, evLossPct: 8.6 }
+      ],
+      explanationDummies: '76s conecta texturas bajas/medias ocultas y rompe parejas altas de los rivales en flops dinámicos. Excelente apertura estándar desde Cutoff.',
+      leakWarning: 'Fuga Común: Jugar solo cartas altas desde Late Position.'
+    }
+  ],
+  four_bet: [
+    {
+      id: '4b-5',
+      category: 'four_bet',
+      categoryName: '4-Bet & Cold 4-Bet',
+      title: '4-Bet Valor Automático con AA (UTG vs CO 3-Bet)',
+      heroCards: [c('A', 's'), c('A', 'd')],
+      board: [],
+      potBB: 11.5,
+      spr: 8.6,
+      opponentProfile: 'regular',
+      potType: '4bet',
+      heroPos: 'EP (UTG)',
+      villainPos: 'CO',
+      villainAction: 'Hero abrió 2.5 BB, CO 3-betea a 8 BB',
+      correctAction: '4-Bet Value a 21 BB',
+      correctSizing: '21 BB',
+      gtoFrequency: 94,
+      options: [
+        { label: '4-Bet Value 21 BB', action: 'RAISE_21', isCorrect: true, evLossPct: 0 },
+        { label: 'Solo Call OOP 8 BB', action: 'CALL', isCorrect: false, evLossPct: 5.7 },
+        { label: 'Fold', action: 'FOLD', isCorrect: false, evLossPct: 55.0 }
+      ],
+      explanationDummies: 'Fuera de posición en UTG contra CO, hacer 4-Bet a 21 BB construye el bote gigante para jugar por las 100 BB con AA.',
+      leakWarning: 'Fuga Común: Hacer siempre slowplay con Ases ante 3-Bets OOP.'
+    },
+    {
+      id: '4b-6',
+      category: 'four_bet',
+      categoryName: '4-Bet & Cold 4-Bet',
+      title: 'Defensa vs 3-Bet con KQs IP (BTN vs BB 3-Bet)',
+      heroCards: [c('K', 'c'), c('Q', 'c')],
+      board: [],
+      potBB: 14.5,
+      spr: 6.8,
+      opponentProfile: 'regular',
+      potType: '3bet',
+      heroPos: 'BTN',
+      villainPos: 'BB',
+      villainAction: 'Hero abrió 2.5 BB, BB 3-betea a 11 BB',
+      correctAction: 'CALL 8.5 BB (Retener IP con Broadways Suited)',
+      correctSizing: '8.5 BB',
+      gtoFrequency: 88,
+      options: [
+        { label: 'Call 8.5 BB en Posición', action: 'CALL', isCorrect: true, evLossPct: 0 },
+        { label: 'Fold KQs ante 3-Bet', action: 'FOLD', isCorrect: false, evLossPct: 11.4 },
+        { label: '4-Bet All-in 100 BB', action: 'ALLIN', isCorrect: false, evLossPct: 18.0 }
+      ],
+      explanationDummies: 'KQs juega de maravilla pagando el 3-Bet con posición: es demasiado fuerte para convertirla en farol-fold y domina los bluffs suited de la BB.',
+      leakWarning: 'Fuga Común: Hacer 4-Bet/fold con manos medias-fuertes suited en posición.'
+    },
+    {
+      id: '4b-7',
+      category: 'four_bet',
+      categoryName: '4-Bet & Cold 4-Bet',
+      title: '4-Bet Farol con KJo (Bloqueadores KK/JJ/QQ) en CO vs BTN 3-Bet LAG',
+      heroCards: [c('K', 's'), c('J', 'd')],
+      board: [],
+      potBB: 11.5,
+      spr: 8.6,
+      opponentProfile: 'lag',
+      potType: '4bet',
+      heroPos: 'CO',
+      villainPos: 'BTN (LAG)',
+      villainAction: 'Hero abrió 2.5 BB, BTN LAG 3-betea frecuente a 8 BB',
+      correctAction: '4-Bet Bluff a 21 BB',
+      correctSizing: '21 BB',
+      gtoFrequency: 62,
+      options: [
+        { label: '4-Bet Bluff a 21 BB', action: 'RAISE_21', isCorrect: true, evLossPct: 0 },
+        { label: 'Flat Call OOP 8 BB', action: 'CALL', isCorrect: false, evLossPct: 5.5 },
+        { label: 'Open Shove 100 BB', action: 'ALLIN', isCorrect: false, evLossPct: 24.0 }
+      ],
+      explanationDummies: 'KJo sufre OOP al pagar, pero bloquea KK, JJ, AK, KQ, AJ. Contra un LAG con 12%+ 3-Bet en BTN, 4-bet bluffear a 21 BB genera fold equity enorme.',
+      leakWarning: 'Fuga Común: Pagar fuera de posición manos broadway offsuit contra 3-Bets frecuentes.'
+    },
+    {
+      id: '4b-8',
+      category: 'four_bet',
+      categoryName: '4-Bet & Cold 4-Bet',
+      title: 'Fold Disciplinado ante Cold 4-Bet con ATo (CO vs BB Cold 4-Bet)',
+      heroCards: [c('A', 'h'), c('T', 'c')],
+      board: [],
+      potBB: 33.0,
+      spr: 2.9,
+      opponentProfile: 'regular',
+      potType: '4bet',
+      heroPos: 'CO',
+      villainPos: 'BB',
+      villainAction: 'CO 3-betea, BB mete Cold 4-Bet fuerte a 24 BB',
+      correctAction: 'FOLD Inmediato',
+      correctSizing: '0 BB',
+      gtoFrequency: 99,
+      options: [
+        { label: 'Fold Limpio', action: 'FOLD', isCorrect: true, evLossPct: 0 },
+        { label: 'Call 16 BB OOP', action: 'CALL', isCorrect: false, evLossPct: 11.8 },
+        { label: '5-Bet Shove 100 BB', action: 'ALLIN', isCorrect: false, evLossPct: 32.0 }
+      ],
+      explanationDummies: 'Un Cold 4-Bet desde las ciegas representa el 3-4% más fuerte del mazo (QQ+, AK, A5s). ATo está completamente dominada.',
+      leakWarning: 'Fuga Común: Pagar 4-Bets con Ases offsuit medios por estar "comprometido".'
+    }
+  ],
+  limp_reraise: [
+    {
+      id: 'lrr-5',
+      category: 'limp_reraise',
+      categoryName: 'Limp Re-Raise (Trampa BvB)',
+      title: 'Limp-Raise BvB con KK (SB vs BB Agresivo)',
+      heroCards: [c('K', 's'), c('K', 'c')],
+      board: [],
+      potBB: 5.0,
+      spr: 20,
+      opponentProfile: 'lag',
+      potType: '3bet',
+      heroPos: 'SB',
+      villainPos: 'BB (LAG)',
+      villainAction: 'Hero completó 1 BB en SB, BB isola a 4 BB',
+      correctAction: 'Limp Re-Raise a 13 BB',
+      correctSizing: '13 BB',
+      gtoFrequency: 88,
+      options: [
+        { label: 'Limp Re-Raise a 13 BB', action: 'RAISE_13', isCorrect: true, evLossPct: 0 },
+        { label: 'Solo Call 3 BB OOP', action: 'CALL', isCorrect: false, evLossPct: 6.4 },
+        { label: 'Fold', action: 'FOLD', isCorrect: false, evLossPct: 48.0 }
+      ],
+      explanationDummies: 'Cuando BB ataca sistemáticamente tu limp en guerra de ciegas, completar y resubir con KK captura el máximo valor antes del flop.',
+      leakWarning: 'Fuga Común: Hacer solo call al aislamiento de BB con KK.'
+    },
+    {
+      id: 'lrr-6',
+      category: 'limp_reraise',
+      categoryName: 'Limp Re-Raise (Trampa BvB)',
+      title: 'Limp Re-Raise Bluff con K4s en BvB (Bloqueador KK/AK)',
+      heroCards: [c('K', 'h'), c('4', 'h')],
+      board: [],
+      potBB: 4.5,
+      spr: 22,
+      opponentProfile: 'regular',
+      potType: '3bet',
+      heroPos: 'SB',
+      villainPos: 'BB',
+      villainAction: 'Hero hace limp 1 BB, BB isola amplio a 3.5 BB',
+      correctAction: 'Limp Re-Raise Bluff a 12 BB',
+      correctSizing: '12 BB',
+      gtoFrequency: 60,
+      options: [
+        { label: 'Limp Re-Raise Bluff 12 BB', action: 'RAISE_12', isCorrect: true, evLossPct: 0 },
+        { label: 'Fold directo OOP', action: 'FOLD', isCorrect: false, evLossPct: 4.1 },
+        { label: 'Open Shove 100 BB', action: 'ALLIN', isCorrect: false, evLossPct: 24.5 }
+      ],
+      explanationDummies: 'K4s tiene blocker de Rey + potencial de color y no es cómoda haciendo solo call OOP. Resubir balancea tu rango de Limp-Raise BvB.',
+      leakWarning: 'Fuga Común: Resubir limp-raises únicamente con Ases y Reyes.'
+    },
+    {
+      id: 'lrr-7',
+      category: 'limp_reraise',
+      categoryName: 'Limp Re-Raise (Trampa BvB)',
+      title: 'Defensa Sólida de Limp BvB con 87s (SB vs BB)',
+      heroCards: [c('8', 'd'), c('7', 'd')],
+      board: [],
+      potBB: 4.5,
+      spr: 22,
+      opponentProfile: 'regular',
+      potType: 'srp',
+      heroPos: 'SB',
+      villainPos: 'BB',
+      villainAction: 'Hero completó 1 BB, BB sube estándar a 3.5 BB',
+      correctAction: 'Call 2.5 BB (Conector Suited Jugable)',
+      correctSizing: '2.5 BB',
+      gtoFrequency: 91,
+      options: [
+        { label: 'Call 2.5 BB', action: 'CALL', isCorrect: true, evLossPct: 0 },
+        { label: 'Limp Re-Raise Bluff 12 BB', action: 'RAISE_12', isCorrect: false, evLossPct: 5.9 },
+        { label: 'Fold', action: 'FOLD', isCorrect: false, evLossPct: 6.7 }
+      ],
+      explanationDummies: '87s flopeará escaleras, dobles y colores contra el amplio rango de aislamiento de la BB. Retén la equity pagando 2.5 BB sin arriesgar a foldear ante 4-bet.',
+      leakWarning: 'Fuga Común: Desperdiciar conectores suited medios haciéndolos bluff.'
+    },
+    {
+      id: 'lrr-8',
+      category: 'limp_reraise',
+      categoryName: 'Limp Re-Raise (Trampa BvB)',
+      title: 'Fold Disciplinado Tras Limp en SB con T3o',
+      heroCards: [c('T', 'c'), c('3', 's')],
+      board: [],
+      potBB: 5.0,
+      spr: 20,
+      opponentProfile: 'lag',
+      potType: 'srp',
+      heroPos: 'SB',
+      villainPos: 'BB',
+      villainAction: 'Hero limpia, BB sube a 4.5 BB',
+      correctAction: 'FOLD Limpio',
+      correctSizing: '0 BB',
+      gtoFrequency: 97,
+      options: [
+        { label: 'Fold Inmediato', action: 'FOLD', isCorrect: true, evLossPct: 0 },
+        { label: 'Call 3.5 BB OOP', action: 'CALL', isCorrect: false, evLossPct: 7.5 },
+        { label: 'Limp Re-Raise All-in', action: 'ALLIN', isCorrect: false, evLossPct: 38.0 }
+      ],
+      explanationDummies: 'T3o fuera de posición contra un tamaño de aislamiento grande (4.5 BB) pierde dinero en todas las simulaciones Nash.',
+      leakWarning: 'Fuga Común: Pagar subidas desde SB con basura offsuit por "ya haber puesto media ciega".'
+    }
+  ],
+  blind_defense: [
+    {
+      id: 'bdef-5',
+      category: 'blind_defense',
+      categoryName: 'Steal & Blind Defense',
+      title: 'Defensa de BB vs Min-Raise BTN con J8s',
+      heroCards: [c('J', 's'), c('8', 's')],
+      board: [],
+      potBB: 4.0,
+      spr: 25,
+      opponentProfile: 'regular',
+      potType: 'srp',
+      heroPos: 'BB',
+      villainPos: 'BTN',
+      villainAction: 'BTN abre 2.2 BB, SB foldea',
+      correctAction: 'CALL Defend (1.2 BB)',
+      correctSizing: '1.2 BB',
+      gtoFrequency: 92,
+      options: [
+        { label: 'Call Defend 1.2 BB', action: 'CALL', isCorrect: true, evLossPct: 0 },
+        { label: 'Fold J8s', action: 'FOLD', isCorrect: false, evLossPct: 8.1 },
+        { label: 'All-in 100 BB', action: 'ALLIN', isCorrect: false, evLossPct: 40.0 }
+      ],
+      explanationDummies: 'Con pot odds excelentes (1.2 BB para un bote de 4.7 BB) y mano suited conectada, J8s es una defensa obligatoria al 100%.',
+      leakWarning: 'Fuga Común: Foldear manos suited conectadas en BB contra min-robos.'
+    },
+    {
+      id: 'bdef-6',
+      category: 'blind_defense',
+      categoryName: 'Steal & Blind Defense',
+      title: '3-Bet Polarizado desde BB con A4s vs CO Open',
+      heroCards: [c('A', 'd'), c('4', 'd')],
+      board: [],
+      potBB: 4.0,
+      spr: 25,
+      opponentProfile: 'lag',
+      potType: '3bet',
+      heroPos: 'BB',
+      villainPos: 'CO',
+      villainAction: 'CO abre 2.5 BB, BTN y SB foldean',
+      correctAction: '3-Bet Bluff a 11 BB',
+      correctSizing: '11 BB',
+      gtoFrequency: 66,
+      options: [
+        { label: '3-Bet Polarizado a 11 BB', action: 'RAISE_11', isCorrect: true, evLossPct: 0 },
+        { label: 'Fold A4s', action: 'FOLD', isCorrect: false, evLossPct: 7.3 },
+        { label: 'Open Shove 100 BB', action: 'ALLIN', isCorrect: false, evLossPct: 35.0 }
+      ],
+      explanationDummies: 'A4s bloquea AA/AK de CO, presiona sus aperturas amplias y realiza gran equity en bote 3-Bet con proyecto wheel y color.',
+      leakWarning: 'Fuga Común: Hacer 3-Bet desde BB solo con manos de valor lineal.'
+    },
+    {
+      id: 'bdef-7',
+      category: 'blind_defense',
+      categoryName: 'Steal & Blind Defense',
+      title: 'Squeeze / 3-Bet Valor en SB con JJ vs CO Open',
+      heroCards: [c('J', 's'), c('J', 'c')],
+      board: [],
+      potBB: 4.0,
+      spr: 25,
+      opponentProfile: 'regular',
+      potType: '3bet',
+      heroPos: 'SB',
+      villainPos: 'CO',
+      villainAction: 'CO abre 2.5 BB, BTN foldea',
+      correctAction: '3-Bet Value a 11 BB',
+      correctSizing: '11 BB',
+      gtoFrequency: 91,
+      options: [
+        { label: '3-Bet Value 11 BB', action: 'RAISE_11', isCorrect: true, evLossPct: 0 },
+        { label: 'Flat Call OOP 2 BB', action: 'CALL', isCorrect: false, evLossPct: 6.8 },
+        { label: 'Fold JJ', action: 'FOLD', isCorrect: false, evLossPct: 42.0 }
+      ],
+      explanationDummies: 'En SB implementamos estrategia 3-Bet o Fold para evitar jugar OOP contra CO y no invitar barato a BB.',
+      leakWarning: 'Fuga Común: Hacer cold call pasivo desde Small Blind.'
+    },
+    {
+      id: 'bdef-8',
+      category: 'blind_defense',
+      categoryName: 'Steal & Blind Defense',
+      title: 'Fold Disciplinado en SB con K9o vs Open de UTG',
+      heroCards: [c('K', 'c'), c('9', 'd')],
+      board: [],
+      potBB: 4.0,
+      spr: 25,
+      opponentProfile: 'regular',
+      potType: 'srp',
+      heroPos: 'SB',
+      villainPos: 'UTG',
+      villainAction: 'UTG abre 2.5 BB, todos foldean hasta SB',
+      correctAction: 'FOLD Disciplinado',
+      correctSizing: '0 BB',
+      gtoFrequency: 98,
+      options: [
+        { label: 'Fold Limpio', action: 'FOLD', isCorrect: true, evLossPct: 0 },
+        { label: 'Cold Call 2 BB OOP', action: 'CALL', isCorrect: false, evLossPct: 6.4 },
+        { label: '3-Bet Bluff 11 BB', action: 'RAISE_11', isCorrect: false, evLossPct: 9.2 }
+      ],
+      explanationDummies: 'K9o está aplastada por el rango estricto de apertura de UTG (AK, KQ, KJ, AA, KK) y jugarás fuera de posición contra dos jugadores con BB detrás.',
+      leakWarning: 'Fuga Común: Defender manos broadway offsuit dominadas desde la Small Blind.'
+    }
+  ],
+  bluff_catch: [
+    {
+      id: 'bc-5',
+      category: 'bluff_catch',
+      categoryName: 'Bluff Catching en River',
+      title: 'Hero Call con Bluff Catcher AQ (Sin Tréboles) en Q♠-9♣-4♣-2♥-8♦',
+      heroCards: [c('A', 'd'), c('Q', 'h')],
+      board: [c('Q', 's'), c('9', 'c'), c('4', 'c'), c('2', 'h'), c('8', 'd')],
+      potBB: 24.0,
+      spr: 1.6,
+      opponentProfile: 'lag',
+      potType: 'srp',
+      heroPos: 'BB',
+      villainPos: 'BTN (LAG)',
+      villainAction: 'BTN dispara 3ª bala 15 BB cuando fallan tréboles y escaleras',
+      correctAction: 'CALL Bluff Catch (15 BB)',
+      correctSizing: '15 BB',
+      gtoFrequency: 80,
+      options: [
+        { label: 'Call Bluff Catch (15 BB)', action: 'CALL', isCorrect: true, evLossPct: 0 },
+        { label: 'Fold Top Pair', action: 'FOLD', isCorrect: false, evLossPct: 10.2 },
+        { label: 'Raise Bluff All-in', action: 'ALLIN', isCorrect: false, evLossPct: 17.6 }
+      ],
+      explanationDummies: 'Fallaron todos los proyectos de tréboles y escaleras tipo JT/T8/76 (excepto JT). No tienes ningún trébol, lo que maximiza las combos de farol fallado en el rival.',
+      leakWarning: 'Fuga Común: Foldear Top Pair sin bloqueadores de color fallido ante jugadores agresivos.'
+    },
+    {
+      id: 'bc-6',
+      category: 'bluff_catch',
+      categoryName: 'Bluff Catching en River',
+      title: 'Thin Value Bet 35% con TPTK en A♦-8♣-3♠-2♥-4♦ (Hero A♠Q♥)',
+      heroCards: [c('A', 's'), c('Q', 'h')],
+      board: [c('A', 'd'), c('8', 'c'), c('3', 's'), c('2', 'h'), c('4', 'd')],
+      potBB: 20.0,
+      spr: 2.2,
+      opponentProfile: 'fish',
+      potType: 'srp',
+      heroPos: 'BTN',
+      villainPos: 'BB (Fish)',
+      villainAction: 'BB pagó dos calles y vuelve a hacer Check en River',
+      correctAction: 'Thin Value Bet 35% - 45% (8.0 BB)',
+      correctSizing: '8.0 BB',
+      gtoFrequency: 89,
+      options: [
+        { label: 'Bet Valor Fino ~40% (8.0 BB)', action: 'BET_40', isCorrect: true, evLossPct: 0 },
+        { label: 'Check Behind por Miedo', action: 'CHECK', isCorrect: false, evLossPct: 7.1 },
+        { label: 'Fold sin apuesta', action: 'FOLD', isCorrect: false, evLossPct: 45.0 }
+      ],
+      explanationDummies: 'Contra un Calling Station, cualquier As débil (A9-A5) o segunda pareja (8x) pagará una apuesta razonable en el river.',
+      leakWarning: 'Fuga Común: Hacer check behind por miedo con Top Pair buen kicker ante jugadores pasivos.'
+    },
+    {
+      id: 'bc-7',
+      category: 'bluff_catch',
+      categoryName: 'Bluff Catching en River',
+      title: 'Fold Disciplinado con JJ en K♥-T♥-6♠-2♣-A♥ vs Overbet 125%',
+      heroCards: [c('J', 'd'), c('J', 'c')],
+      board: [c('K', 'h'), c('T', 'h'), c('6', 's'), c('2', 'c'), c('A', 'h')],
+      potBB: 26.0,
+      spr: 1.5,
+      opponentProfile: 'regular',
+      potType: 'srp',
+      heroPos: 'BB',
+      villainPos: 'CO',
+      villainAction: 'Completa As + Color ♥ en river y CO mete Overbet 32 BB',
+      correctAction: 'FOLD Disciplinado',
+      correctSizing: '0 BB',
+      gtoFrequency: 96,
+      options: [
+        { label: 'Fold Limpio (Sin Corazón)', action: 'FOLD', isCorrect: true, evLossPct: 0 },
+        { label: 'Hero Call (32 BB)', action: 'CALL', isCorrect: false, evLossPct: 21.0 },
+        { label: 'Min-Raise Farol', action: 'RAISE', isCorrect: false, evLossPct: 29.0 }
+      ],
+      explanationDummies: 'En el river ya hay As, Rey, Diez y tres corazones completos. Tu JJ (sin ♥) pierde contra todo el rango de valor e incluso contra semibluffs que ligaron par.',
+      leakWarning: 'Fuga Común: Hacer hero calls con terceras parejas ante overbets en rivers donde todo se completó.'
+    },
+    {
+      id: 'bc-8',
+      category: 'bluff_catch',
+      categoryName: 'Bluff Catching en River',
+      title: 'Inducción / Bluff Catch con KJ en K♠-9♠-5♦-2♣-4♥ vs Triple Barrel',
+      heroCards: [c('K', 'd'), c('J', 'h')],
+      board: [c('K', 's'), c('9', 's'), c('5', 'd'), c('2', 'c'), c('4', 'h')],
+      potBB: 22.0,
+      spr: 1.8,
+      opponentProfile: 'lag',
+      potType: 'srp',
+      heroPos: 'BB',
+      villainPos: 'BTN (LAG)',
+      villainAction: 'BTN mete 3ª bala de 15 BB cuando fallan picas y QJ/QT',
+      correctAction: 'CALL Bluff Catch (15 BB)',
+      correctSizing: '15 BB',
+      gtoFrequency: 77,
+      options: [
+        { label: 'Call Defend (15 BB)', action: 'CALL', isCorrect: true, evLossPct: 0 },
+        { label: 'Fold Top Pair', action: 'FOLD', isCorrect: false, evLossPct: 8.4 },
+        { label: 'Check-Raise All-in', action: 'ALLIN', isCorrect: false, evLossPct: 16.2 }
+      ],
+      explanationDummies: 'No tienes ninguna pica (desbloqueas todos sus flush draws fallidos) y con K♦J♥ vences a los faroles y K-peores sin necesidad de resubir.',
+      leakWarning: 'Fuga Común: Resubir o foldear bluff-catchers ideales que desbloquean los proyectos rotos del rival.'
+    }
+  ]
+};
+
+// Banco unificado: 8+ escenarios estratégicamente únicos por categoría (96+ base × permutación isomórfica de palos)
+export const ACADEMY_SCENARIO_BANK: Record<AcademyCategory, QuizScenario[]> = (() => {
+  const combined = {} as Record<AcademyCategory, QuizScenario[]>;
+  (Object.keys(BASE_ACADEMY_SCENARIO_BANK) as AcademyCategory[]).forEach(cat => {
+    combined[cat] = [...BASE_ACADEMY_SCENARIO_BANK[cat], ...(EXTRA_ACADEMY_SPOTS[cat] || [])];
+  });
+  return combined;
+})();
+
+const SUIT_LIST: Suit[] = ['s', 'h', 'd', 'c'];
+const SUIT_SYMBOL_MAP: Record<Suit, string> = { s: '♠', h: '♥', d: '♦', c: '♣' };
+const SUIT_SINGULAR_ES: Record<Suit, string> = { s: 'pica', h: 'corazón', d: 'diamante', c: 'trébol' };
+const SUIT_PLURAL_ES: Record<Suit, string> = { s: 'picas', h: 'corazones', d: 'diamantes', c: 'tréboles' };
+
+function permuteSuitText(text: string, suitMap: Record<Suit, Suit>): string {
+  let out = text;
+
+  // 1. Atomic card symbol swaps via sentinel tokens
+  out = out
+    .replace(/♠/g, '\uE000')
+    .replace(/♥/g, '\uE001')
+    .replace(/♦/g, '\uE002')
+    .replace(/♣/g, '\uE003');
+  out = out
+    .replace(/\uE000/g, SUIT_SYMBOL_MAP[suitMap.s])
+    .replace(/\uE001/g, SUIT_SYMBOL_MAP[suitMap.h])
+    .replace(/\uE002/g, SUIT_SYMBOL_MAP[suitMap.d])
+    .replace(/\uE003/g, SUIT_SYMBOL_MAP[suitMap.c]);
+
+  // 2. Spanish suit words preserving singular/plural and initial capitalization
+  out = out.replace(/\b(picas?|espadas?|coraz[oó]n(?:es)?|diamantes?|tr[eé]bol(?:es)?)\b/gi, (word: string) => {
+    const lower = word.toLowerCase();
+    let origSuit: Suit | null = null;
+    if (lower.startsWith('pica') || lower.startsWith('espada')) origSuit = 's';
+    else if (lower.startsWith('coraz')) origSuit = 'h';
+    else if (lower.startsWith('diamant')) origSuit = 'd';
+    else if (lower.startsWith('tr')) origSuit = 'c';
+    if (!origSuit) return word;
+
+    const targetSuit = suitMap[origSuit];
+    const isPlural = lower.endsWith('s');
+    let replacement = isPlural ? SUIT_PLURAL_ES[targetSuit] : SUIT_SINGULAR_ES[targetSuit];
+    if (word[0] && word[0] === word[0].toUpperCase()) {
+      replacement = replacement[0].toUpperCase() + replacement.slice(1);
+    }
+    return replacement;
+  });
+
+  return out;
 }
 
-function shuffleScenarioOptions(sc: QuizScenario): QuizScenario {
-  const opts = shuffleArray(sc.options);
+/**
+ * Permuta isomórficamente los 4 palos de una mano (♠ ♥ ♦ ♣) con entropía CSPRNG.
+ * Mantiene 100% intacta la matemática EV/Nash mientras hace cada reparto visualmente único.
+ */
+export function permuteScenarioSuits(sc: QuizScenario): QuizScenario {
+  const permutedSuits = cryptoShuffle(SUIT_LIST);
+  const suitMap: Record<Suit, Suit> = {
+    s: permutedSuits[0],
+    h: permutedSuits[1],
+    d: permutedSuits[2],
+    c: permutedSuits[3]
+  };
+
   return {
     ...sc,
-    heroCards: [{ ...sc.heroCards[0] }, { ...sc.heroCards[1] }],
-    board: sc.board.map(b => ({ ...b })),
-    options: opts
+    title: permuteSuitText(sc.title, suitMap),
+    villainAction: permuteSuitText(sc.villainAction, suitMap),
+    correctAction: permuteSuitText(sc.correctAction, suitMap),
+    explanationDummies: permuteSuitText(sc.explanationDummies, suitMap),
+    leakWarning: permuteSuitText(sc.leakWarning, suitMap),
+    heroCards: [
+      { rank: sc.heroCards[0].rank, suit: suitMap[sc.heroCards[0].suit], id: cardId(sc.heroCards[0].rank, suitMap[sc.heroCards[0].suit]) },
+      { rank: sc.heroCards[1].rank, suit: suitMap[sc.heroCards[1].suit], id: cardId(sc.heroCards[1].rank, suitMap[sc.heroCards[1].suit]) }
+    ],
+    board: sc.board.map(b => ({
+      rank: b.rank,
+      suit: suitMap[b.suit],
+      id: cardId(b.rank, suitMap[b.suit])
+    })),
+    options: cryptoShuffle(
+      sc.options.map(o => ({
+        ...o,
+        label: permuteSuitText(o.label, suitMap)
+      }))
+    )
   };
+}
+
+const ACADEMY_QUEUE_KEY = 'lab_studio_academy_queue_v2';
+const sessionSeenByUid = new Map<string, Set<string>>();
+
+export function resetAcademySessionHistory(uidOverride?: string): void {
+  const uid = uidOverride || getActiveStorageUserUid();
+  sessionSeenByUid.delete(uid);
 }
 
 /**
  * Devuelve una mano garantizadamente nueva de la baraja no vista de la categoría para el usuario activo.
- * Recorre TODOS los spots de la categoría antes de reiniciar el ciclo y jamás repite `excludeId` de seguido.
+ * Garantiza CERO repeticiones dentro de la misma sesión en toda la categoría (y en Quiz Infinito),
+ * además de permutación isomórfica aleatoria de palos en cada reparto.
  */
 export function getNextAcademyScenario(
   category: AcademyCategory,
@@ -1320,25 +2629,47 @@ export function getNextAcademyScenario(
 ): QuizScenario {
   const pool = ACADEMY_SCENARIO_BANK[category] || ACADEMY_SCENARIO_BANK.dry_flop;
   const poolMap = new Map(pool.map(item => [item.id, item]));
+  const uid = getActiveStorageUserUid();
+
+  let sessionSeen = sessionSeenByUid.get(uid);
+  if (!sessionSeen) {
+    sessionSeen = new Set<string>();
+    sessionSeenByUid.set(uid, sessionSeen);
+  }
+
   const queueStore = readScopedJson<Partial<Record<AcademyCategory, string[]>>>(ACADEMY_QUEUE_KEY, {});
   let remainingIds = Array.isArray(queueStore[category])
-    ? (queueStore[category] as string[]).filter(id => poolMap.has(id))
+    ? (queueStore[category] as string[]).filter(id => poolMap.has(id) && !sessionSeen!.has(id))
     : [];
 
   if (remainingIds.length === 0) {
-    remainingIds = shuffleArray(pool.map(item => item.id));
-    if (excludeId && remainingIds.length > 1 && remainingIds[0] === excludeId) {
-      remainingIds.push(remainingIds.shift() as string);
+    // Prefer unseen-in-session spots from this category first
+    const unseenInSession = pool.map(item => item.id).filter(id => !sessionSeen!.has(id));
+    if (unseenInSession.length > 0) {
+      remainingIds = cryptoShuffle(unseenInSession);
+    } else {
+      // Full session deck exhausted for this category: clear category from sessionSeen and shuffle fresh
+      for (const item of pool) {
+        sessionSeen.delete(item.id);
+      }
+      remainingIds = cryptoShuffle(pool.map(item => item.id));
     }
-  } else if (excludeId && remainingIds.length > 1 && remainingIds[0] === excludeId) {
+  }
+
+  if (excludeId && remainingIds.length > 1 && remainingIds[0] === excludeId) {
     remainingIds.push(remainingIds.shift() as string);
   }
 
   const pickedId = remainingIds.shift() || pool[0].id;
+  sessionSeen.add(pickedId);
   writeScopedJson(ACADEMY_QUEUE_KEY, { ...queueStore, [category]: remainingIds });
 
   const picked = poolMap.get(pickedId) || pool[0];
-  return shuffleScenarioOptions(picked);
+  return permuteScenarioSuits(picked);
+}
+
+export function getAcademyCategoryCount(category: AcademyCategory): number {
+  return (ACADEMY_SCENARIO_BANK[category] || []).length;
 }
 
 export function getAllAcademyScenarios(): QuizScenario[] {
@@ -1369,10 +2700,12 @@ export function buildEvaluationExam(
       '3b-1',
       'bc-4'
     ];
-    return fixedIds
-      .map(id => all.find(s => s.id === id))
-      .filter((s): s is QuizScenario => Boolean(s))
-      .map(shuffleScenarioOptions);
+    return cryptoShuffle(
+      fixedIds
+        .map(id => all.find(s => s.id === id))
+        .filter((s): s is QuizScenario => Boolean(s))
+        .map(permuteScenarioSuits)
+    );
   }
 
   let filtered = all.filter(sc => {
@@ -1390,10 +2723,10 @@ export function buildEvaluationExam(
 
   if (filtered.length < filters.questionCount) {
     const remaining = all.filter(s => !filtered.some(f => f.id === s.id));
-    filtered = [...filtered, ...shuffleArray(remaining)];
+    filtered = [...filtered, ...cryptoShuffle(remaining)];
   }
 
-  return shuffleArray(filtered)
+  return cryptoShuffle(filtered)
     .slice(0, filters.questionCount)
-    .map(shuffleScenarioOptions);
+    .map(permuteScenarioSuits);
 }

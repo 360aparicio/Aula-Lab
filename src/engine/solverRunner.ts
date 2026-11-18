@@ -6,7 +6,7 @@
  * pausing, resuming, and cancellation.
  */
 
-import { Card } from './cards';
+import { type Card } from './cards';
 import { DCFRConfig, DCFRSolver, DEFAULT_DCFR_CONFIG, SolveResult } from './dcfr';
 import { ActionNode } from './gameTree';
 import { ConcreteHandWithWeight } from './range';
@@ -20,19 +20,109 @@ export interface SolverProgress {
   elapsedMs: number;
   status: SolverStatus;
   exploitability: number;
+  fromCache?: boolean;
+}
+
+export interface CachedSolveResult extends SolveResult {
+  fromCache?: boolean;
+}
+
+export const MAX_SOLVER_CACHE_ENTRIES = 64;
+
+export class SolverLRUCache {
+  private readonly capacity: number;
+  private readonly map = new Map<string, CachedSolveResult>();
+
+  constructor(capacity = MAX_SOLVER_CACHE_ENTRIES) {
+    this.capacity = Math.max(1, capacity);
+  }
+
+  public get(key: string): CachedSolveResult | undefined {
+    const found = this.map.get(key);
+    if (!found) return undefined;
+    // Refresh recency (LRU)
+    this.map.delete(key);
+    this.map.set(key, found);
+    return found;
+  }
+
+  public set(key: string, value: CachedSolveResult): void {
+    if (this.map.has(key)) {
+      this.map.delete(key);
+    } else if (this.map.size >= this.capacity) {
+      const oldestKey = this.map.keys().next().value;
+      if (oldestKey !== undefined) {
+        this.map.delete(oldestKey);
+      }
+    }
+    this.map.set(key, { ...value, fromCache: true });
+  }
+
+  public size(): number {
+    return this.map.size;
+  }
+
+  public clear(): void {
+    this.map.clear();
+  }
+}
+
+export const globalSolverCache = new SolverLRUCache(MAX_SOLVER_CACHE_ENTRIES);
+
+function summarizeTreeStructure(node: ActionNode): string {
+  const parts: string[] = [`${node.id}:${node.street}:${node.pot}:${node.actions.length}`];
+  for (const act of node.actions) {
+    const child = node.children?.[act.actionKey];
+    if (child && child.nodeType === 'action') {
+      parts.push(summarizeTreeStructure(child));
+    }
+  }
+  return parts.join('|');
+}
+
+export function buildSolveCacheKey(
+  treeRoot: ActionNode,
+  board: Card[],
+  oopCombos: ConcreteHandWithWeight[],
+  ipCombos: ConcreteHandWithWeight[],
+  config: Partial<DCFRConfig>
+): string {
+  const merged = { ...DEFAULT_DCFR_CONFIG, ...config };
+  const boardSig = board.map(c => c.id).join(',');
+  const oopSig = oopCombos
+    .map(c => `${c.combo.card1.id}-${c.combo.card2.id}:${Math.round(c.weight * 100)}`)
+    .join(',');
+  const ipSig = ipCombos
+    .map(c => `${c.combo.card1.id}-${c.combo.card2.id}:${Math.round(c.weight * 100)}`)
+    .join(',');
+  const locksSig = JSON.stringify(merged.nodeLocks || {});
+  const treeSig = summarizeTreeStructure(treeRoot);
+  return [
+    merged.algorithm,
+    merged.iterations,
+    merged.rakePct ?? 0,
+    merged.rakeCapChips ?? 0,
+    merged.simulateFutureStreets ?? true,
+    boardSig,
+    oopSig,
+    ipSig,
+    locksSig,
+    treeSig
+  ].join('||');
 }
 
 export class AsyncSolverRunner {
   private solver: DCFRSolver | null = null;
+  private cacheKey: string | null = null;
   private status: SolverStatus = 'idle';
   private currentIteration = 0;
   private totalIterations = 300;
   private startTime = 0;
   private totalElapsedMs = 0;
-  private timerId: number | null = null;
+  private timerId: ReturnType<typeof setTimeout> | null = null;
   private chunkSize = 25; // iterations per asynchronous slice
   private onProgressCb?: (progress: SolverProgress) => void;
-  private onCompleteCb?: (result: SolveResult) => void;
+  private onCompleteCb?: (result: CachedSolveResult) => void;
   private onErrorCb?: (error: Error) => void;
 
   public init(
@@ -46,12 +136,13 @@ export class AsyncSolverRunner {
     this.currentIteration = 0;
     this.totalElapsedMs = 0;
     this.status = 'idle';
+    this.cacheKey = buildSolveCacheKey(treeRoot, board, oopCombos, ipCombos, config);
     this.solver = new DCFRSolver(treeRoot, board, oopCombos, ipCombos, config);
   }
 
   public setCallbacks(callbacks: {
     onProgress?: (progress: SolverProgress) => void;
-    onComplete?: (result: SolveResult) => void;
+    onComplete?: (result: CachedSolveResult) => void;
     onError?: (error: Error) => void;
   }) {
     this.onProgressCb = callbacks.onProgress;
@@ -64,6 +155,30 @@ export class AsyncSolverRunner {
       throw new Error('Solver not initialized. Call init() first.');
     }
     if (this.status === 'running') return;
+
+    if (this.cacheKey) {
+      const cached = globalSolverCache.get(this.cacheKey);
+      if (cached) {
+        this.currentIteration = this.totalIterations;
+        this.totalElapsedMs = 0;
+        this.status = 'completed';
+        if (this.onProgressCb) {
+          this.onProgressCb({
+            currentIteration: this.totalIterations,
+            totalIterations: this.totalIterations,
+            percent: 100,
+            elapsedMs: 0,
+            status: 'completed',
+            exploitability: 0,
+            fromCache: true
+          });
+        }
+        if (this.onCompleteCb) {
+          this.onCompleteCb({ ...cached, elapsedMs: 0, fromCache: true });
+        }
+        return;
+      }
+    }
 
     this.status = 'running';
     this.startTime = performance.now();
@@ -104,7 +219,7 @@ export class AsyncSolverRunner {
   }
 
   private scheduleNextChunk() {
-    this.timerId = window.setTimeout(() => {
+    this.timerId = globalThis.setTimeout(() => {
       this.runChunk();
     }, 0);
   }
@@ -124,9 +239,16 @@ export class AsyncSolverRunner {
 
       if (this.currentIteration >= this.totalIterations) {
         this.status = 'completed';
-        const finalResult = this.solver.solve(0); // extract finalized strategies
-        finalResult.elapsedMs = Math.round(elapsed);
-        finalResult.iterationsRun = this.totalIterations;
+        const rawResult = this.solver.solve(0); // extract finalized strategies
+        const finalResult: CachedSolveResult = {
+          ...rawResult,
+          elapsedMs: Math.round(elapsed),
+          iterationsRun: this.totalIterations,
+          fromCache: false
+        };
+        if (this.cacheKey) {
+          globalSolverCache.set(this.cacheKey, finalResult);
+        }
 
         this.notifyProgress();
         if (this.onCompleteCb) {
