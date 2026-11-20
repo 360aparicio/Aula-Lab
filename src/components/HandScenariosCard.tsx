@@ -273,11 +273,10 @@ export const HandScenariosCard: React.FC<HandScenariosCardProps> = ({
       {scenarios && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {/* Scenario 1: Check */}
-          <div className="p-3.5 bg-neutral-950/80 rounded-xl border border-neutral-800 flex flex-col justify-between gap-2 hover:border-emerald-500/40 transition-colors">
+          <div className="p-3.5 bg-neutral-950/80 rounded-xl border border-neutral-800 flex flex-col justify-between gap-2 hover:border-cyan-500/40 transition-colors">
             <div>
-              <div className="flex items-center gap-1.5 text-xs font-bold text-white">
-                <span className="w-2 h-2 rounded-full bg-cyan-400 inline-block" />
-                <span>{scenarios.scenarioCheck.title}</span>
+              <div className="text-xs font-bold text-cyan-300">
+                {scenarios.scenarioCheck.title}
               </div>
               <div className="mt-2 text-xs font-bold text-emerald-400">
                 {scenarios.scenarioCheck.action}
@@ -294,9 +293,8 @@ export const HandScenariosCard: React.FC<HandScenariosCardProps> = ({
           {/* Scenario 2: Bet Small */}
           <div className="p-3.5 bg-neutral-950/80 rounded-xl border border-neutral-800 flex flex-col justify-between gap-2 hover:border-emerald-500/40 transition-colors">
             <div>
-              <div className="flex items-center gap-1.5 text-xs font-bold text-white">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />
-                <span>{scenarios.scenarioSmall.title}</span>
+              <div className="text-xs font-bold text-emerald-300">
+                {scenarios.scenarioSmall.title}
               </div>
               <div className="mt-2 text-xs font-bold text-cyan-300">
                 {scenarios.scenarioSmall.action}
@@ -311,11 +309,10 @@ export const HandScenariosCard: React.FC<HandScenariosCardProps> = ({
           </div>
 
           {/* Scenario 3: Bet Big */}
-          <div className="p-3.5 bg-neutral-950/80 rounded-xl border border-neutral-800 flex flex-col justify-between gap-2 hover:border-emerald-500/40 transition-colors">
+          <div className="p-3.5 bg-neutral-950/80 rounded-xl border border-neutral-800 flex flex-col justify-between gap-2 hover:border-rose-500/40 transition-colors">
             <div>
-              <div className="flex items-center gap-1.5 text-xs font-bold text-white">
-                <span className="w-2 h-2 rounded-full bg-rose-400 inline-block" />
-                <span>{scenarios.scenarioBig.title}</span>
+              <div className="text-xs font-bold text-rose-300">
+                {scenarios.scenarioBig.title}
               </div>
               <div className="mt-2 text-xs font-bold text-rose-300">
                 {scenarios.scenarioBig.action}

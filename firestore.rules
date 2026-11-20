@@ -87,7 +87,9 @@ service cloud.firestore {
       && data.keys().hasOnly([
         'uid', 'email', 'displayName', 'photoURL', 'role', 'planTier', 'planActive', 'planPermissions',
         'isManualPlaceholder', 'elo', 'masteryScore', 'totalDecisions', 'totalMistakes',
-        'roadmapDoneIds', 'categoryStats', 'evaluationStats', 'createdAt', 'updatedAt'
+        'roadmapDoneIds', 'categoryStats', 'evaluationStats',
+        'studyLevel', 'studyLevelSource', 'marketStudyEnrolled', 'deckTheme',
+        'createdAt', 'updatedAt'
       ])
       && data.uid is string && data.uid.size() >= 6 && data.uid.size() <= 128 && data.uid == userId
       && data.email is string && data.email.size() >= 3 && data.email.size() <= 160
@@ -95,6 +97,10 @@ service cloud.firestore {
       && (!data.keys().hasAny(['photoURL']) || (data.photoURL is string && data.photoURL.size() <= 512))
       && (!data.keys().hasAny(['planPermissions']) || isValidPlanPermissions(data.planPermissions))
       && (!data.keys().hasAny(['isManualPlaceholder']) || data.isManualPlaceholder is bool)
+      && (!data.keys().hasAny(['studyLevel']) || data.studyLevel in ['fish', 'reg', 'nit'])
+      && (!data.keys().hasAny(['studyLevelSource']) || data.studyLevelSource in ['self_selected', 'cohort_assignment', 'admin_override'])
+      && (!data.keys().hasAny(['marketStudyEnrolled']) || data.marketStudyEnrolled is bool)
+      && (!data.keys().hasAny(['deckTheme']) || data.deckTheme in ['classic_white', 'four_color_white', 'dark_pro', 'four_color_dark'])
       && data.role in ['user', 'admin']
       && data.planTier in ['free', 'pro', 'elite']
       && data.planActive is bool
@@ -267,7 +273,8 @@ service cloud.firestore {
                 && incoming().diff(existing()).affectedKeys().hasOnly([
                   'displayName', 'photoURL', 'role', 'planTier', 'planActive', 'planPermissions',
                   'isManualPlaceholder', 'elo', 'masteryScore', 'totalDecisions', 'totalMistakes',
-                  'roadmapDoneIds', 'categoryStats', 'evaluationStats', 'updatedAt'
+                  'roadmapDoneIds', 'categoryStats', 'evaluationStats',
+                  'studyLevel', 'studyLevelSource', 'marketStudyEnrolled', 'deckTheme', 'updatedAt'
                 ])
               )
               ||
@@ -279,7 +286,8 @@ service cloud.firestore {
                 && incoming().planActive == existing().planActive
                 && incoming().diff(existing()).affectedKeys().hasOnly([
                   'displayName', 'photoURL', 'elo', 'masteryScore', 'totalDecisions',
-                  'totalMistakes', 'roadmapDoneIds', 'categoryStats', 'evaluationStats', 'updatedAt'
+                  'totalMistakes', 'roadmapDoneIds', 'categoryStats', 'evaluationStats',
+                  'studyLevel', 'studyLevelSource', 'marketStudyEnrolled', 'deckTheme', 'updatedAt'
                 ])
               )
             )
@@ -566,6 +574,302 @@ service cloud.firestore {
         && incoming().updatedAt == request.time
         && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'priority', 'adminNotes', 'updatedAt']);
       allow delete: if isValidId(ticketId) && isAdmin();
+    }
+
+    // =========================================================================
+    // MARKET STUDY V1 (market_study_v1) — Hardened Rules
+    // =========================================================================
+
+    function isValidFeatureFlag(data, flagId) {
+      return data.keys().hasAll([
+        'flagId', 'enabled', 'cohortMaxPerLevel', 'rolloutNotes', 'updatedByUid', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'flagId', 'enabled', 'cohortMaxPerLevel', 'rolloutNotes', 'updatedByUid', 'updatedAt'
+      ])
+      && data.flagId is string && data.flagId == flagId && data.flagId.size() <= 64
+      && data.enabled is bool
+      && data.cohortMaxPerLevel is number && data.cohortMaxPerLevel >= 1 && data.cohortMaxPerLevel <= 1000
+      && data.rolloutNotes is string && data.rolloutNotes.size() <= 240
+      && data.updatedByUid is string && data.updatedByUid.size() >= 4 && data.updatedByUid.size() <= 128
+      && data.updatedAt is timestamp;
+    }
+
+    match /featureFlags/{flagId} {
+      allow get: if isValidId(flagId) && isVerifiedUser();
+      allow list: if isAdmin();
+      allow create, update: if isValidId(flagId)
+        && isAdmin()
+        && isValidFeatureFlag(incoming(), flagId)
+        && incoming().updatedByUid == request.auth.uid
+        && incoming().updatedAt == request.time;
+      allow delete: if isValidId(flagId) && isAdmin();
+    }
+
+    function isValidStudyCohort(data, cohortId) {
+      return data.keys().hasAll([
+        'level', 'maxQuota', 'currentCount', 'waitlistCount', 'active', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'level', 'maxQuota', 'currentCount', 'waitlistCount', 'active', 'updatedAt'
+      ])
+      && cohortId in ['fish', 'reg', 'nit']
+      && data.level == cohortId
+      && data.maxQuota is number && data.maxQuota >= 1 && data.maxQuota <= 1000
+      && data.currentCount is number && data.currentCount >= 0 && data.currentCount <= data.maxQuota
+      && data.waitlistCount is number && data.waitlistCount >= 0 && data.waitlistCount <= 50000
+      && data.active is bool
+      && data.updatedAt is timestamp;
+    }
+
+    match /studyCohorts/{cohortId} {
+      allow get: if isValidId(cohortId) && isVerifiedUser();
+      allow list: if isAdmin() || (isVerifiedUser() && existing().level in ['fish', 'reg', 'nit']);
+      allow create: if isValidId(cohortId)
+        && isValidStudyCohort(incoming(), cohortId)
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin()
+          || (
+            isVerifiedUser()
+            && incoming().maxQuota == 100
+            && incoming().currentCount == 1
+            && incoming().waitlistCount == 0
+            && incoming().active == true
+            && existsAfter(/databases/$(database)/documents/studyEnrollments/$(request.auth.uid))
+            && getAfter(/databases/$(database)/documents/studyEnrollments/$(request.auth.uid)).data.cohortLevel == cohortId
+          )
+        );
+      allow update: if isValidId(cohortId)
+        && isValidStudyCohort(incoming(), cohortId)
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin()
+          || (
+            isVerifiedUser()
+            && existing().active == true
+            && incoming().level == existing().level
+            && incoming().maxQuota == existing().maxQuota
+            && incoming().active == existing().active
+            && (
+              (
+                incoming().currentCount == existing().currentCount + 1
+                && incoming().currentCount <= existing().maxQuota
+                && incoming().waitlistCount == existing().waitlistCount
+                && incoming().diff(existing()).affectedKeys().hasOnly(['currentCount', 'updatedAt'])
+                && existsAfter(/databases/$(database)/documents/studyEnrollments/$(request.auth.uid))
+                && getAfter(/databases/$(database)/documents/studyEnrollments/$(request.auth.uid)).data.cohortLevel == existing().level
+              )
+              || (
+                existing().currentCount >= existing().maxQuota
+                && incoming().currentCount == existing().currentCount
+                && incoming().waitlistCount == existing().waitlistCount + 1
+                && incoming().diff(existing()).affectedKeys().hasOnly(['waitlistCount', 'updatedAt'])
+                && existsAfter(/databases/$(database)/documents/studyEnrollments/$(request.auth.uid))
+                && getAfter(/databases/$(database)/documents/studyEnrollments/$(request.auth.uid)).data.status == 'waitlisted'
+              )
+              || (
+                existing().currentCount > 0
+                && incoming().currentCount == existing().currentCount - 1
+                && incoming().waitlistCount == existing().waitlistCount
+                && incoming().diff(existing()).affectedKeys().hasOnly(['currentCount', 'updatedAt'])
+                && getAfter(/databases/$(database)/documents/studyEnrollments/$(request.auth.uid)).data.status == 'withdrawn'
+              )
+            )
+          )
+        );
+      allow delete: if isValidId(cohortId) && isAdmin();
+    }
+
+    function isValidStudyConsent(data) {
+      return data.keys().hasAll([
+        'uid', 'consentVersion', 'accepted', 'isAdult', 'birthYear', 'jurisdiction',
+        'ipHash', 'countryCode', 'userAgent', 'status', 'acceptedAt'
+      ])
+      && data.keys().hasOnly([
+        'uid', 'consentVersion', 'accepted', 'isAdult', 'birthYear', 'jurisdiction',
+        'ipHash', 'countryCode', 'userAgent', 'status', 'acceptedAt', 'revokedAt'
+      ])
+      && data.uid is string && data.uid.size() >= 6 && data.uid.size() <= 128
+      && data.consentVersion is string && data.consentVersion.size() >= 1 && data.consentVersion.size() <= 16
+      && data.accepted is bool
+      && data.isAdult is bool
+      && data.birthYear is number && data.birthYear >= 1920 && data.birthYear <= 2010
+      && data.jurisdiction == 'CO_1581_GDPR'
+      && data.ipHash is string && data.ipHash.size() >= 4 && data.ipHash.size() <= 96
+      && data.countryCode is string && data.countryCode.size() >= 2 && data.countryCode.size() <= 12
+      && data.userAgent is string && data.userAgent.size() <= 200
+      && data.status in ['active', 'revoked']
+      && data.acceptedAt is timestamp
+      && (!data.keys().hasAny(['revokedAt']) || data.revokedAt == null || data.revokedAt is timestamp);
+    }
+
+    match /studyConsents/{consentId} {
+      allow get: if isValidId(consentId) && (isAdmin() || (isVerifiedUser() && existing().uid == request.auth.uid));
+      allow list: if isAdmin() || (isVerifiedUser() && existing().uid == request.auth.uid);
+      allow create: if isValidId(consentId)
+        && isOwner(incoming().uid)
+        && consentId == (request.auth.uid + '_v1_0')
+        && isValidStudyConsent(incoming())
+        && incoming().accepted == true
+        && incoming().isAdult == true
+        && incoming().status == 'active'
+        && incoming().acceptedAt == request.time;
+      allow update: if isValidId(consentId)
+        && isValidStudyConsent(incoming())
+        && incoming().uid == existing().uid
+        && incoming().consentVersion == existing().consentVersion
+        && incoming().accepted == existing().accepted
+        && incoming().isAdult == existing().isAdult
+        && incoming().birthYear == existing().birthYear
+        && incoming().acceptedAt == existing().acceptedAt
+        && (
+          isAdmin()
+          || (
+            isOwner(existing().uid)
+            && existing().status == 'active'
+            && incoming().status == 'revoked'
+            && incoming().revokedAt == request.time
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'revokedAt'])
+          )
+        );
+      allow delete: if false;
+    }
+
+    function isValidStudyEnrollment(data, userId) {
+      return data.keys().hasAll([
+        'uid', 'selfSelectedLevel', 'cohortLevel', 'adminOverrideLevel', 'effectiveLevel',
+        'levelSource', 'status', 'consentVersion', 'enrolledAtMs', 'studyEndsAtMs',
+        'completedSurveys', 'enrolledAt', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'uid', 'selfSelectedLevel', 'cohortLevel', 'adminOverrideLevel', 'effectiveLevel',
+        'levelSource', 'status', 'consentVersion', 'enrolledAtMs', 'studyEndsAtMs',
+        'completedSurveys', 'withdrawnAtMs', 'purgeScheduledAtMs', 'enrolledAt', 'updatedAt'
+      ])
+      && data.uid is string && data.uid.size() >= 6 && data.uid.size() <= 128 && data.uid == userId
+      && data.selfSelectedLevel in ['fish', 'reg', 'nit']
+      && data.cohortLevel in ['fish', 'reg', 'nit']
+      && data.adminOverrideLevel in ['fish', 'reg', 'nit', 'none']
+      && data.effectiveLevel in ['fish', 'reg', 'nit']
+      && data.levelSource in ['self_selected', 'cohort_assignment', 'admin_override']
+      && data.status in ['active', 'waitlisted', 'withdrawn', 'completed']
+      && data.consentVersion is string && data.consentVersion.size() >= 1 && data.consentVersion.size() <= 16
+      && data.enrolledAtMs is number && data.enrolledAtMs > 0
+      && data.studyEndsAtMs is number && data.studyEndsAtMs >= data.enrolledAtMs
+      && data.completedSurveys is list && data.completedSurveys.size() <= 8
+      && (data.completedSurveys.size() == 0 || (data.completedSurveys[0] is string && data.completedSurveys[0].size() <= 16))
+      && (!data.keys().hasAny(['withdrawnAtMs']) || data.withdrawnAtMs is number)
+      && (!data.keys().hasAny(['purgeScheduledAtMs']) || data.purgeScheduledAtMs is number)
+      && data.enrolledAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    match /studyEnrollments/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin() || (isVerifiedUser() && existing().uid == request.auth.uid);
+      allow create: if isValidId(userId)
+        && isOwner(userId)
+        && isValidStudyEnrollment(incoming(), userId)
+        && exists(/databases/$(database)/documents/studyConsents/$(userId + '_v1_0'))
+        && get(/databases/$(database)/documents/studyConsents/$(userId + '_v1_0')).data.status == 'active'
+        && incoming().adminOverrideLevel == 'none'
+        && incoming().enrolledAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(userId)
+        && isValidStudyEnrollment(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().cohortLevel == existing().cohortLevel
+        && incoming().consentVersion == existing().consentVersion
+        && incoming().enrolledAt == existing().enrolledAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin()
+          || (
+            isOwner(userId)
+            && incoming().adminOverrideLevel == existing().adminOverrideLevel
+            && (
+              incoming().status == existing().status
+              || (existing().status in ['active', 'waitlisted'] && incoming().status == 'withdrawn')
+            )
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'selfSelectedLevel', 'effectiveLevel', 'levelSource',
+              'completedSurveys', 'status', 'withdrawnAtMs', 'purgeScheduledAtMs', 'updatedAt'
+            ])
+          )
+        );
+      allow delete: if isValidId(userId) && isAdmin();
+    }
+
+    function isValidStudyEvent(data) {
+      return data.keys().hasAll([
+        'uid', 'sessionId', 'cohortLevel', 'effectiveLevel', 'eventName',
+        'module', 'durationMs', 'metadataJson', 'expiresAtMs', 'createdAt'
+      ])
+      && data.keys().hasOnly([
+        'uid', 'sessionId', 'cohortLevel', 'effectiveLevel', 'eventName',
+        'module', 'durationMs', 'metadataJson', 'expiresAtMs', 'createdAt'
+      ])
+      && data.uid is string && data.uid.size() >= 6 && data.uid.size() <= 128
+      && data.sessionId is string && data.sessionId.size() >= 2 && data.sessionId.size() <= 64
+      && data.cohortLevel in ['fish', 'reg', 'nit']
+      && data.effectiveLevel in ['fish', 'reg', 'nit']
+      && data.eventName in [
+        'study_enrolled', 'study_withdrawn', 'level_selected', 'tab_viewed',
+        'hand_simulated', 'solver_calculated', 'academy_evaluated',
+        'tracker2_imported', 'survey_submitted', 'session_heartbeat'
+      ]
+      && data.module is string && data.module.size() >= 1 && data.module.size() <= 64
+      && data.durationMs is number && data.durationMs >= 0 && data.durationMs <= 86400000
+      && data.metadataJson is string && data.metadataJson.size() <= 500
+      && data.expiresAtMs is number && data.expiresAtMs > 0
+      && data.createdAt is timestamp;
+    }
+
+    match /studyEvents/{eventId} {
+      allow get: if isValidId(eventId) && (isAdmin() || (isVerifiedUser() && existing().uid == request.auth.uid));
+      allow list: if isAdmin() || (isVerifiedUser() && existing().uid == request.auth.uid);
+      allow create: if isValidId(eventId)
+        && isOwner(incoming().uid)
+        && isValidStudyEvent(incoming())
+        && incoming().createdAt == request.time;
+      allow update: if false;
+      allow delete: if isValidId(eventId) && (isAdmin() || (isVerifiedUser() && existing().uid == request.auth.uid));
+    }
+
+    function isValidStudyFeedback(data) {
+      return data.keys().hasAll([
+        'uid', 'cohortLevel', 'effectiveLevel', 'milestone', 'npsScore',
+        'pmfAnswer', 'levelSatisfaction', 'densityFeedback', 'openComment',
+        'expiresAtMs', 'createdAt'
+      ])
+      && data.keys().hasOnly([
+        'uid', 'cohortLevel', 'effectiveLevel', 'milestone', 'npsScore',
+        'pmfAnswer', 'levelSatisfaction', 'densityFeedback', 'openComment',
+        'expiresAtMs', 'createdAt'
+      ])
+      && data.uid is string && data.uid.size() >= 6 && data.uid.size() <= 128
+      && data.cohortLevel in ['fish', 'reg', 'nit']
+      && data.effectiveLevel in ['fish', 'reg', 'nit']
+      && data.milestone in ['day7', 'day14', 'day21', 'day30']
+      && data.npsScore is number && data.npsScore >= 0 && data.npsScore <= 10
+      && data.pmfAnswer in ['very_disappointed', 'somewhat_disappointed', 'not_disappointed']
+      && data.levelSatisfaction is number && data.levelSatisfaction >= 1 && data.levelSatisfaction <= 5
+      && data.densityFeedback in ['too_simple', 'just_right', 'too_complex']
+      && data.openComment is string && data.openComment.size() <= 800
+      && data.expiresAtMs is number && data.expiresAtMs > 0
+      && data.createdAt is timestamp;
+    }
+
+    match /studyFeedback/{feedbackId} {
+      allow get: if isValidId(feedbackId) && (isAdmin() || (isVerifiedUser() && existing().uid == request.auth.uid));
+      allow list: if isAdmin() || (isVerifiedUser() && existing().uid == request.auth.uid);
+      allow create: if isValidId(feedbackId)
+        && isOwner(incoming().uid)
+        && isValidStudyFeedback(incoming())
+        && incoming().createdAt == request.time;
+      allow update: if false;
+      allow delete: if isValidId(feedbackId) && (isAdmin() || (isVerifiedUser() && existing().uid == request.auth.uid));
     }
   }
 }

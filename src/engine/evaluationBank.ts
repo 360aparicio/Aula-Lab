@@ -10,7 +10,7 @@
 import { Card, cardId, type Rank, type Suit } from './cards';
 import type { AcademyCategory, QuizScenario } from './academySpots';
 import { getActiveStorageUserUid, readScopedItem, writeScopedItem } from '../lib/userStorage';
-import { cryptoShuffle } from '../lib/random';
+import { fisherYatesShuffle } from '../lib/random';
 
 export type EvaluationMode = 'fixed' | 'levels' | 'variable';
 export type DifficultyLevel = 1 | 2 | 3 | 4;
@@ -1142,8 +1142,8 @@ export function generateNonRepeatingExam(
     }
   }
 
-  // Pick diverse categories + distinct conceptTags first before random fill
-  const shuffledUnseen = cryptoShuffle(unseen);
+  // Seleccionar primero diversidad de categorías/conceptos y luego aplicar Fisher-Yates completo al lote final
+  const shuffledUnseen = fisherYatesShuffle(unseen);
   const picked: EvaluationQuestion[] = [];
   const usedCategoriesInExam = new Set<string>();
   const usedConceptsInExam = new Set<string>();
@@ -1180,9 +1180,9 @@ export function generateNonRepeatingExam(
     }
   }
 
-  const randomizedQuestions = picked.map(q => ({
+  const randomizedQuestions = fisherYatesShuffle(picked).map(q => ({
     ...q,
-    options: cryptoShuffle(q.options)
+    options: fisherYatesShuffle(q.options)
   }));
 
   return {

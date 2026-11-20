@@ -13,6 +13,8 @@ import { runDCFRTests } from './dcfr.test';
 import { runPersonalizationTests } from './personalization.test';
 import { runV39ProTests } from './v39pro.test';
 import { runGtoAuditTests } from './gto_audit.test';
+import { runMarketStudyTests } from './marketStudy.test';
+import { runDeckAndRunoutTests } from './deckAndRunout.test';
 
 async function runAll() {
   console.log('====================================================');
@@ -32,6 +34,8 @@ async function runAll() {
     { name: 'Per-User Isolation & Non-Repeating Pools', fn: runPersonalizationTests },
     { name: 'Allin School Simulator, TheTracker2 & Diagnostic Suite', fn: runV39ProTests },
     { name: 'Lab Studio Nash Mathematical Audit Suite', fn: runGtoAuditTests },
+    { name: 'Market Study v1 (Flags, Cohorts, Legal, Telemetry & Migrations)', fn: runMarketStudyTests },
+    { name: 'Global Deck Theme & Academy Full-Hand Turn/River Runouts', fn: runDeckAndRunoutTests },
   ];
 
   for (const suite of suites) {

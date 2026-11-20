@@ -12,6 +12,7 @@ import { Card } from './cards';
 import { SpacedRepetitionManager } from './spacedRepetition';
 import { SolverMetaUpdater } from './solverMetaUpdater';
 import { readScopedItem, writeScopedItem } from '../lib/userStorage';
+import { cryptoRandomInt } from '../lib/random';
 
 export interface BoardTextureAnalysis {
   wetness: 'Seco (Dry)' | 'Coordinado (Wet)' | 'Monótono (Monotone)' | 'Emparejado (Paired)' | 'Preflop';
@@ -291,7 +292,7 @@ export class LearnerService {
     }
 
     const record: LearnerMistakeRecord = {
-      id: `mistake-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      id: `mistake-${Date.now()}-${cryptoRandomInt(1000000).toString(36)}`,
       timestamp: Date.now(),
       scenarioTitle: params.scenarioTitle,
       heroCombo: params.heroCombo,

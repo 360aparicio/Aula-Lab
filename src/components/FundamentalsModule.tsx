@@ -11,7 +11,8 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { Card, cardToString, FULL_DECK, parseCard, SUIT_COLORS, SUIT_SYMBOLS } from '../engine/cards';
+import { Card, cardToString, FULL_DECK, parseCard, SUIT_SYMBOLS } from '../engine/cards';
+import { PlayingCard } from './PlayingCard';
 import { compareHands, evaluateCards, HandCategory } from '../engine/evaluator';
 import {
   loadDailyMissions,
@@ -22,6 +23,7 @@ import {
 import { PokerGlossaryTip } from './PokerGlossaryTip';
 import { WeeklyLeaksRadarCard } from './OnboardingAndLeaksBar';
 import type { SimPosition, SimScenarioType } from '../engine/handSimulator';
+import { fisherYatesShuffle } from '../lib/random';
 import {
   Award,
   CheckCircle2,
@@ -103,11 +105,7 @@ const CATEGORY_ES: Record<HandCategory, string> = {
 };
 
 function generateRandomDuel(seq: number): RankingDuelScenario {
-  const deck = [...FULL_DECK];
-  for (let i = deck.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [deck[i], deck[j]] = [deck[j], deck[i]];
-  }
+  const deck = fisherYatesShuffle(FULL_DECK);
   const boardCards = deck.slice(0, 5);
   const aCards = deck.slice(5, 7);
   const bCards = deck.slice(7, 9);
@@ -195,15 +193,7 @@ const SEAT_PROFITABILITY_GUIDE: Array<{
 ];
 
 function MiniCardChip({ card }: { card: Card }) {
-  const c = SUIT_COLORS[card.suit];
-  return (
-    <div
-      className={`w-10 h-14 rounded-lg border ${c.bg} ${c.border} flex flex-col items-center justify-center font-mono font-bold shadow`}
-    >
-      <span className={`text-sm leading-none ${c.text}`}>{card.rank}</span>
-      <span className={`text-xs leading-none mt-0.5 ${c.text}`}>{SUIT_SYMBOLS[card.suit]}</span>
-    </div>
-  );
+  return <PlayingCard card={card} size="sm" />;
 }
 
 export const FundamentalsModule: React.FC<FundamentalsModuleProps> = ({
@@ -212,6 +202,7 @@ export const FundamentalsModule: React.FC<FundamentalsModuleProps> = ({
   onStartEvaluation,
   onLaunchDrill
 }) => {
+  const [duelDeck, setDuelDeck] = useState<RankingDuelScenario[]>(() => fisherYatesShuffle(RANKING_DUELS));
   const [duelIdx, setDuelIdx] = useState(0);
   const [customDuel, setCustomDuel] = useState<RankingDuelScenario | null>(null);
   const [duelGuess, setDuelGuess] = useState<'A' | 'B' | null>(null);
@@ -220,7 +211,7 @@ export const FundamentalsModule: React.FC<FundamentalsModuleProps> = ({
   const [betBB, setBetBB] = useState<number>(5);
   const [missionsState, setMissionsState] = useState(() => loadDailyMissions());
 
-  const activeDuel = customDuel || RANKING_DUELS[duelIdx % RANKING_DUELS.length];
+  const activeDuel = customDuel || duelDeck[duelIdx % duelDeck.length];
 
   const duelEval = useMemo(() => {
     const board = activeDuel.board.map(parseCard);
@@ -247,13 +238,22 @@ export const FundamentalsModule: React.FC<FundamentalsModuleProps> = ({
 
   const handleNextDuel = () => {
     setCustomDuel(null);
-    setDuelIdx(prev => (prev + 1) % RANKING_DUELS.length);
+    if (duelIdx + 1 >= duelDeck.length) {
+      const currentId = duelDeck[duelIdx]?.id;
+      const reshuffled = fisherYatesShuffle(RANKING_DUELS);
+      if (reshuffled.length > 1 && reshuffled[0].id === currentId) {
+        [reshuffled[0], reshuffled[reshuffled.length - 1]] = [reshuffled[reshuffled.length - 1], reshuffled[0]];
+      }
+      setDuelDeck(reshuffled);
+      setDuelIdx(0);
+    } else {
+      setDuelIdx(prev => prev + 1);
+    }
     setDuelGuess(null);
   };
 
   const handleRandomDuel = () => {
-    setDuelIdx(prev => prev + 1);
-    setCustomDuel(generateRandomDuel(duelIdx + 1));
+    setCustomDuel(generateRandomDuel(Date.now()));
     setDuelGuess(null);
   };
 
@@ -265,10 +265,10 @@ export const FundamentalsModule: React.FC<FundamentalsModuleProps> = ({
   const outsNeededApprox = Math.max(1, Math.min(20, Math.round(requiredEquityPct / 4)));
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-7">
       {/* HEADER + DAILY MISSIONS STRIP */}
-      <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div className="space-y-1.5">
+      <div className="bg-neutral-900/55 border border-neutral-800/80 rounded-2xl p-6 sm:p-7 shadow-sm shadow-black/30 ring-1 ring-inset ring-white/[0.03] flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+        <div className="space-y-2">
           <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-blue-400">
             <Compass className="w-4 h-4" />
             <span>Módulo 0 · Academia Visual de Fundamentos 6-Max</span>
@@ -276,7 +276,7 @@ export const FundamentalsModule: React.FC<FundamentalsModuleProps> = ({
           <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
             Domina las Bases Antes de Apostar una Sola Ciega
           </h1>
-          <p className="text-xs sm:text-sm text-neutral-400 max-w-2xl">
+          <p className="text-xs sm:text-sm text-neutral-400 max-w-2xl leading-relaxed">
             Modo activo:{' '}
             <strong className="text-blue-300">{EXPERIENCE_LEVEL_META[experienceLevel].label}</strong>. Aquí entiendes
             quién gana en cada mano, por qué la posición manda y cuánta{' '}
@@ -288,7 +288,7 @@ export const FundamentalsModule: React.FC<FundamentalsModuleProps> = ({
           <button
             type="button"
             onClick={onStartTrainer}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold cursor-pointer"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-sm shadow-black/30 transition-colors cursor-pointer"
           >
             <Play className="w-3.5 h-3.5 fill-current" />
             <span>Practicar en Mesa 6-Max</span>
@@ -296,7 +296,7 @@ export const FundamentalsModule: React.FC<FundamentalsModuleProps> = ({
           <button
             type="button"
             onClick={onStartEvaluation}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-200 text-xs font-semibold cursor-pointer"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-200 text-xs font-semibold transition-colors cursor-pointer"
           >
             <Award className="w-3.5 h-3.5 text-emerald-400" />
             <span>Evaluar Nivel (NL2+)</span>
@@ -305,11 +305,11 @@ export const FundamentalsModule: React.FC<FundamentalsModuleProps> = ({
       </div>
 
       {/* DAILY MISSIONS & STREAK */}
-      <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-5 space-y-4">
+      <div className="bg-neutral-900/55 border border-neutral-800/80 rounded-2xl p-6 shadow-sm shadow-black/30 ring-1 ring-inset ring-white/[0.03] space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Trophy className="w-4 h-4 text-amber-400" />
-            <h2 className="text-sm font-bold text-white">Misiones Diarias de Progreso</h2>
+            <h2 className="text-sm font-bold tracking-tight text-white">Misiones Diarias de Progreso</h2>
           </div>
           <div className="flex flex-wrap items-center gap-4 text-xs font-mono tabular-nums">
             <span className="flex items-center gap-1.5 text-amber-300 font-bold">
@@ -362,9 +362,9 @@ export const FundamentalsModule: React.FC<FundamentalsModuleProps> = ({
       </div>
 
       {/* GRID: LAB 1 (HAND DUEL) + LAB 2 (POT ODDS SLIDER) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* LAB 1: INTERACTIVE HAND RANKING DUEL */}
-        <div className="lg:col-span-6 bg-neutral-950 border border-neutral-800 rounded-2xl p-5 space-y-4">
+        <div className="lg:col-span-6 bg-neutral-900/55 border border-neutral-800/80 rounded-2xl p-6 shadow-sm shadow-black/30 ring-1 ring-inset ring-white/[0.03] space-y-5">
           <div className="flex items-center justify-between gap-2">
             <div>
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
@@ -459,7 +459,7 @@ export const FundamentalsModule: React.FC<FundamentalsModuleProps> = ({
         </div>
 
         {/* LAB 2: INTERACTIVE POT ODDS & EQUITY SLIDER */}
-        <div className="lg:col-span-6 bg-neutral-950 border border-neutral-800 rounded-2xl p-5 space-y-4">
+        <div className="lg:col-span-6 bg-neutral-900/55 border border-neutral-800/80 rounded-2xl p-6 shadow-sm shadow-black/30 ring-1 ring-inset ring-white/[0.03] space-y-5">
           <div>
             <h2 className="text-sm font-bold text-white flex items-center gap-2">
               <Percent className="w-4 h-4 text-emerald-400" />
@@ -543,7 +543,7 @@ export const FundamentalsModule: React.FC<FundamentalsModuleProps> = ({
       </div>
 
       {/* LAB 3: 6-MAX POSITIONAL PROFITABILITY MAP */}
-      <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-5 space-y-4">
+      <div className="bg-neutral-900/55 border border-neutral-800/80 rounded-2xl p-6 shadow-sm shadow-black/30 ring-1 ring-inset ring-white/[0.03] space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-sm font-bold text-white">

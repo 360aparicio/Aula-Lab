@@ -20,15 +20,23 @@ import {
   ShieldCheck,
   Crown,
   ExternalLink,
-  LifeBuoy
+  LifeBuoy,
+  Settings
 } from 'lucide-react';
+import { useDeckTheme } from '../context/DeckThemeContext';
 
 interface UserAuthButtonProps {
   onOpenPlanBenefits?: () => void;
   onOpenSupport?: () => void;
+  onOpenSettings?: () => void;
 }
 
-export const UserAuthButton: React.FC<UserAuthButtonProps> = ({ onOpenPlanBenefits, onOpenSupport }) => {
+export const UserAuthButton: React.FC<UserAuthButtonProps> = ({
+  onOpenPlanBenefits,
+  onOpenSupport,
+  onOpenSettings
+}) => {
+  const { deckTheme } = useDeckTheme();
   const {
     user,
     isAuthReady,
@@ -228,6 +236,26 @@ export const UserAuthButton: React.FC<UserAuthButtonProps> = ({ onOpenPlanBenefi
                 </div>
               </div>
             </div>
+          )}
+
+          {onOpenSettings && (
+            <button
+              type="button"
+              onClick={() => {
+                onOpenSettings();
+                setMenuOpen(false);
+              }}
+              className="w-full p-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-left flex items-center justify-between gap-2 text-neutral-200 transition-colors cursor-pointer"
+            >
+              <div className="flex items-center gap-2">
+                <Settings className="w-4 h-4 text-blue-400 shrink-0" />
+                <div>
+                  <div className="font-bold text-xs">Ajustes de Baraja</div>
+                  <div className="text-[10px] text-neutral-400">Activa: {deckTheme.shortName}</div>
+                </div>
+              </div>
+              <span className="text-[10px] font-mono text-blue-300 shrink-0">Cambiar</span>
+            </button>
           )}
 
           {onOpenSupport && (

@@ -284,6 +284,16 @@ export async function verifyAdminProfileForSession(user: User): Promise<UserProf
   return null;
 }
 
+function secureRandomInt(bound: number): number {
+  const c = globalThis.crypto;
+  if (c && typeof c.getRandomValues === 'function') {
+    const arr = new Uint32Array(1);
+    c.getRandomValues(arr);
+    return arr[0] % Math.max(1, bound);
+  }
+  return Date.now() % Math.max(1, bound);
+}
+
 export async function recordAdminAuditLog(
   targetUid: string,
   targetLabel: string,
@@ -292,7 +302,7 @@ export async function recordAdminAuditLog(
 ): Promise<void> {
   const actor = auth.currentUser;
   if (!actor) return;
-  const logId = sanitizeDocId(`log-${Date.now()}-${Math.floor(Math.random() * 10000)}`);
+  const logId = sanitizeDocId(`log-${Date.now()}-${secureRandomInt(10000)}`);
   const logPath = `adminAuditLogs/${logId}`;
   const safeTargetUid = clampString(targetUid, 128, 'system_target').padEnd(6, '_');
   try {
@@ -1101,7 +1111,7 @@ export async function adminCreateBillingTransaction(
   const actor = auth.currentUser;
   if (!actor) throw new Error('Sesión de Administrador requerida.');
 
-  const txId = sanitizeDocId(`tx-${Date.now()}-${Math.floor(Math.random() * 10000)}`);
+  const txId = sanitizeDocId(`tx-${Date.now()}-${secureRandomInt(10000)}`);
   const path = `billingTransactions/${txId}`;
   const cleanAmount = Math.max(0, Math.min(100000, Math.round(Number(input.amountUsd) * 100) / 100));
   const cleanPeriod = clampString(input.billingPeriod, 16, new Date().toISOString().slice(0, 7));
@@ -1229,7 +1239,7 @@ export async function adminCreateAnnouncement(input: {
 }): Promise<PlatformAnnouncementEntry> {
   const actor = auth.currentUser;
   if (!actor) throw new Error('Sesión de Administrador requerida.');
-  const annId = sanitizeDocId(`ann-${Date.now()}-${Math.floor(Math.random() * 1000)}`);
+  const annId = sanitizeDocId(`ann-${Date.now()}-${secureRandomInt(1000)}`);
   const path = `platformAnnouncements/${annId}`;
   const title = clampString(input.title, 90, 'Comunicado Oficial');
   const message = clampString(input.message, 300, 'Actualización en Allin School.');
@@ -1354,7 +1364,7 @@ export async function adminCreateSupportTicket(input: {
 }): Promise<SupportTicketEntry> {
   const actor = auth.currentUser;
   if (!actor) throw new Error('Sesión de Administrador requerida.');
-  const ticketId = sanitizeDocId(`tkt-${Date.now()}-${Math.floor(Math.random() * 1000)}`);
+  const ticketId = sanitizeDocId(`tkt-${Date.now()}-${secureRandomInt(1000)}`);
   const path = `supportTickets/${ticketId}`;
   const subject = clampString(input.subject, 120, 'Seguimiento de cuenta');
   const description = clampString(input.description, 600, 'Nota administrativa.');

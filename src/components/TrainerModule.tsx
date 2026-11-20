@@ -12,7 +12,9 @@
  */
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Card, cardId, RANKS, SUIT_COLORS, SUIT_SYMBOLS, SUITS } from '../engine/cards';
+import { Card, cardId, RANKS, SUIT_SYMBOLS, SUITS } from '../engine/cards';
+import { PlayingCard } from './PlayingCard';
+import { useDeckTheme } from '../context/DeckThemeContext';
 import { DEFAULT_DCFR_CONFIG, NodeStrategyResult } from '../engine/dcfr';
 import { Action, ActionNode, buildGameTree, PlayerRole } from '../engine/gameTree';
 import { ConcreteHandWithWeight } from '../engine/range';
@@ -20,6 +22,7 @@ import { createConcreteComboFromCards } from '../engine/combos';
 import { evaluateCards } from '../engine/evaluator';
 import { AsyncSolverRunner } from '../engine/solverRunner';
 import { ActionEvBarChart } from './ActionEvBarChart';
+import { cryptoRandomInt } from '../lib/random';
 import {
   clearTrainingAttempts,
   dealRandomHeroHand,
@@ -110,6 +113,7 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
   onBack,
   bbUnit = 2
 }) => {
+  const { deckTheme } = useDeckTheme();
   // Table Positions
   const [internalHeroPos, setInternalHeroPos] = useState<TablePosition>(
     activeScenario.defaultHero === 'IP' ? 'BTN' : 'BB'
@@ -373,7 +377,7 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
       }
     }
     if (candidates.length === 0) return null;
-    return candidates[Math.floor(Math.random() * candidates.length)];
+    return candidates[cryptoRandomInt(candidates.length)];
   };
 
   const filterUnblockedCombos = (combos: ConcreteHandWithWeight[], board: Card[]): ConcreteHandWithWeight[] => {
@@ -411,7 +415,7 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
     saveTrainerStats(updatedStats);
 
     const newAttempt: TrainingAttempt = {
-      id: Math.random().toString(36).substring(7),
+      id: `att-${Date.now()}-${cryptoRandomInt(100000).toString(36)}`,
       timestamp: Date.now(),
       scenarioTitle: `${activeScenario.title} [${practiceStreet.toUpperCase()}]`,
       nodeHistory: currentNode.history,
@@ -453,7 +457,6 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
     });
 
     const isFold = action.type === 'FOLD';
-    const isCorrectDecision = fb.grade === 'optimal' || fb.grade === 'acceptable';
 
     // Advance the game tree (resolving exact actionKey first)
     const childKey = action.actionKey ||
@@ -476,14 +479,7 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
       return;
     }
 
-    // If wrong decision (inaccuracy/mistake/blunder) -> stop and display error diagnosis
-    if (!isCorrectDecision) {
-      setFeedback(fb);
-      setIsHandOver(true);
-      return;
-    }
-
-    // Correct non-fold decision! Log step & advance within street or to Turn / River
+    // Siempre que nadie foldee, registramos el feedback de la calle y continuamos a Turn / River / Showdown
     setLastStepFeedback(fb);
 
     if (nextNode.nodeType === 'showdown') {
@@ -715,7 +711,7 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
 
     setIsAdvancingStreet(true);
     setVillainActionMessage(
-      `✓ ${streetJustFinished.toUpperCase()} superado (${lastFb.gradeLabel}). Repartiendo ${nextStreet.toUpperCase()}: ${nextCard.rank}${SUIT_SYMBOLS[nextCard.suit]}...`
+      `${lastFb.grade === 'optimal' || lastFb.grade === 'acceptable' ? '✓' : '⚠'} ${streetJustFinished.toUpperCase()} (${lastFb.gradeLabel}). Repartiendo ${nextStreet.toUpperCase()}: ${nextCard.rank}${SUIT_SYMBOLS[nextCard.suit]}...`
     );
 
     const runner = new AsyncSolverRunner();
@@ -800,32 +796,9 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
     return true;
   });
 
-  const renderCard = (card: Card, size: 'sm' | 'md' = 'md') => {
-    const style = SUIT_COLORS[card.suit];
-    const isSm = size === 'sm';
-    return (
-      <div
-        key={card.id}
-        className={`${
-          isSm ? 'w-10 h-14 p-1' : 'w-14 h-20 p-1.5'
-        } rounded-lg bg-neutral-950 border ${style.border} flex flex-col justify-between shadow-lg select-none`}
-      >
-        <div className="flex items-center justify-between">
-          <span className={`${isSm ? 'text-xs' : 'text-base'} font-bold leading-none ${style.text}`}>
-            {card.rank}
-          </span>
-          <span className={`${isSm ? 'text-[10px]' : 'text-xs'} ${style.text}`}>
-            {SUIT_SYMBOLS[card.suit]}
-          </span>
-        </div>
-        <div className="flex justify-center items-center my-auto">
-          <span className={`${isSm ? 'text-lg' : 'text-2xl'} leading-none ${style.text}`}>
-            {SUIT_SYMBOLS[card.suit]}
-          </span>
-        </div>
-      </div>
-    );
-  };
+  const renderCard = (card: Card, size: 'sm' | 'md' = 'md') => (
+    <PlayingCard key={card.id} card={card} size={size} />
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -913,14 +886,11 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
       </div>
 
       {/* DEDICATED PROMINENT POSITION & HOLE CARDS SELECTOR CARD */}
-      <div className="bg-neutral-900 border-2 border-emerald-500/60 rounded-xl p-4 sm:p-5 shadow-xl flex flex-col gap-3">
+      <div className="bg-neutral-900/60 border border-neutral-800/80 rounded-2xl p-4 sm:p-5 flex flex-col gap-3">
         <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2.5">
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
-            <h2 className="text-xs sm:text-sm font-bold uppercase tracking-wider text-white flex items-center gap-2">
-              <span>🎯 Selección de Posiciones (Hero vs Villano) y Mis Cartas</span>
-            </h2>
-          </div>
+          <h2 className="text-xs sm:text-sm font-semibold uppercase tracking-wider text-neutral-100">
+            Posiciones (Hero vs Villano) y Cartas Privadas
+          </h2>
           <span className="text-[11px] font-mono text-emerald-400 font-semibold hidden sm:inline">
             Hero: {heroPos} ({heroRole}) · Villano: {villainPos} ({villainRole})
           </span>
@@ -1282,19 +1252,27 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
               {/* Street History Breadcrumbs */}
               {streetLogs.length > 0 && (
                 <div className="flex flex-wrap items-center justify-center gap-2 max-w-2xl">
-                  {streetLogs.map((log, i) => (
-                    <span
-                      key={i}
-                      className="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-neutral-900/90 border border-emerald-800/50 text-emerald-300"
-                    >
-                      {log.street.toUpperCase()}: {log.heroAction} ({log.gradeLabel})
-                      {log.villainAction ? ` → Villano: ${log.villainAction}` : ''}
-                    </span>
-                  ))}
+                  {streetLogs.map((log, i) => {
+                    const cleanStreet = log.evLossBB <= 0.5;
+                    return (
+                      <span
+                        key={i}
+                        className={`text-[11px] font-mono px-2.5 py-1 rounded-lg bg-neutral-900/90 border ${
+                          cleanStreet
+                            ? 'border-emerald-800/50 text-emerald-300'
+                            : 'border-amber-700/60 text-amber-300'
+                        }`}
+                      >
+                        {log.street.toUpperCase()}: {log.heroAction} ({log.gradeLabel}
+                        {log.evLossBB > 0 ? ` · -${log.evLossBB} BB` : ''})
+                        {log.villainAction ? ` → Villano: ${log.villainAction}` : ''}
+                      </span>
+                    );
+                  })}
                 </div>
               )}
 
-              {/* Advancing street spinner or positive step feedback */}
+              {/* Advancing street spinner or live step feedback (including suboptimal non-fold plays continuing to Turn/River) */}
               {isAdvancingStreet && (
                 <div className="mt-1 px-3.5 py-1.5 bg-blue-950/80 border border-blue-500/60 rounded-lg text-xs font-mono text-blue-200 flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full border-2 border-blue-400 border-t-transparent animate-spin" />
@@ -1303,8 +1281,16 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
               )}
 
               {lastStepFeedback && !feedback && !isAdvancingStreet && (
-                <div className="px-3 py-1 bg-emerald-950/70 border border-emerald-700/60 rounded-lg text-[11px] font-mono text-emerald-300">
-                  ✓ Decisión anterior correcta: {lastStepFeedback.chosenAction} ({lastStepFeedback.gradeLabel}) — Continúa jugando en {practiceStreet.toUpperCase()}
+                <div
+                  className={`px-3 py-1 rounded-lg text-[11px] font-mono border ${
+                    lastStepFeedback.grade === 'optimal' || lastStepFeedback.grade === 'acceptable'
+                      ? 'bg-emerald-950/70 border-emerald-700/60 text-emerald-300'
+                      : 'bg-amber-950/70 border-amber-600/70 text-amber-200'
+                  }`}
+                >
+                  {lastStepFeedback.grade === 'optimal' || lastStepFeedback.grade === 'acceptable'
+                    ? `✓ Decisión anterior válida: ${lastStepFeedback.chosenAction} (${lastStepFeedback.gradeLabel}) — Continúa en ${practiceStreet.toUpperCase()}`
+                    : `⚠ Desviación anterior (${lastStepFeedback.chosenAction}, -${lastStepFeedback.evLossBB} BB vs Óptimo: ${lastStepFeedback.bestAction}) — Continuamos la mano en ${practiceStreet.toUpperCase()}`}
                 </div>
               )}
 
@@ -1920,14 +1906,16 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
               )}
             </div>
 
-            {/* 4-Color Card Picker Grid */}
+            {/* Card Picker Grid synced with user DeckTheme */}
             <div className="space-y-2.5">
               {SUITS.map(suit => {
-                const suitStyle = SUIT_COLORS[suit];
+                const suitTextClass = deckTheme.suitText[suit];
+                const pickerCellBgClass = deckTheme.pickerCellBg[suit];
+                const suitBorderClass = deckTheme.suitBorder[suit];
                 return (
                   <div key={suit} className="flex items-center gap-1.5">
                     <div className="w-6 text-center">
-                      <span className={`text-base font-bold ${suitStyle.text}`}>
+                      <span className={`text-base font-bold ${suitTextClass}`}>
                         {SUIT_SYMBOLS[suit]}
                       </span>
                     </div>
@@ -1946,12 +1934,12 @@ export const TrainerModule: React.FC<TrainerModuleProps> = ({
                             key={rank}
                             disabled={isDead}
                             onClick={() => handleCardClickInPicker(currentCard)}
-                            className={`h-9 rounded flex items-center justify-center font-bold text-xs transition-all ${
+                            className={`h-9 rounded flex items-center justify-center font-bold text-xs transition-all border ${
                               isDead
-                                ? 'bg-neutral-950 text-neutral-800 line-through cursor-not-allowed border border-neutral-900'
+                                ? 'bg-neutral-950 text-neutral-800 line-through cursor-not-allowed border-neutral-900'
                                 : isSelected
-                                ? 'bg-emerald-500 text-white ring-2 ring-emerald-300 font-extrabold scale-105 z-10'
-                                : `${suitStyle.bg} ${suitStyle.text} border ${suitStyle.border} hover:brightness-125`
+                                ? 'bg-emerald-500 text-white ring-2 ring-emerald-300 border-emerald-400 font-extrabold scale-105 z-10'
+                                : `${pickerCellBgClass} ${suitTextClass} ${suitBorderClass} cursor-pointer`
                             }`}
                           >
                             {rank}

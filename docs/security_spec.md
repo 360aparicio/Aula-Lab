@@ -23,3 +23,21 @@
 12. **Blanket Collection Scrape by Non-Admin:** Non-admin calling `list /users` -> DENIED (`existing().uid == request.auth.uid` fails on other users' docs).
 13. **Immutable Admin Audit Logs:** Non-admins cannot read or write `/adminAuditLogs`; even admins cannot update or delete existing logs (`allow update, delete: if false`).
 14. **Non-Admin Plan Catalog Tampering:** Non-admin attempting `write /planConfigs/free` -> DENIED.
+
+## Market Study v1 Security Invariants (`market_study_v1`)
+7. **Default-OFF Feature Flag Isolation (`/featureFlags/market_study_v1`):** Verified users may read flag state (`get`), but ONLY `isAdmin()` may create or toggle `enabled` / `cohortMaxPerLevel`.
+8. **Append-Only Legal Consents (`/studyConsents/{consentId}`):** Must bind `consentId == request.auth.uid + '_v1_0'`, `accepted == true`, `isAdult == true`, `acceptedAt == request.time`. Once created, updates may ONLY set `status: 'revoked'` + `revokedAt: request.time` (withdrawal). `delete` is forbidden (`false`) for 5-year legal retention.
+9. **Atomic Cohort Quota Cap (`100 FISH / 100 REG / 100 NIT` via `existsAfter`/`getAfter`):** Non-admin enrollment cannot increment `/studyCohorts/{level}.currentCount` unless `currentCount + 1 <= maxQuota` AND `/studyEnrollments/{uid}` is atomically created in the same batch/transaction with active consent verified via `exists(/databases/$(database)/documents/studyConsents/$(uid + '_v1_0'))`.
+10. **Strict Level Precedence & No Privilege Escalation:** Participants can only modify `selfSelectedLevel`, `completedSurveys`, or set `status == 'withdrawn'` on their own `/studyEnrollments/{uid}` — NEVER `adminOverrideLevel` or subscription `planTier`/`planPermissions`.
+11. **PII-Free Telemetry & Right to Erasure (`/studyEvents`, `/studyFeedback`):** Events and feedback belong strictly to `owner` (`uid == request.auth.uid`), reject updates (`allow update: if false`), and allow deletion by owner/admin upon withdrawal.
+
+## Dirty Dozen Market Study Payloads (Must Return PERMISSION_DENIED)
+15. **Non-Admin Flag Enable:** Student calling `update /featureFlags/market_study_v1 { enabled: true }` -> DENIED.
+16. **Underage Consent Bypass:** User creating `/studyConsents/{uid}_v1_0` with `isAdult: false` -> DENIED.
+17. **Consent Tampering / Deletion:** User deleting or changing `acceptedAt` on `/studyConsents/{uid}_v1_0` -> DENIED.
+18. **Quota Overflow Injection:** User incrementing `/studyCohorts/fish.currentCount` from `100` to `101` -> DENIED (`incoming().currentCount <= existing().maxQuota`).
+19. **Orphan Cohort Counter Attack:** User incrementing `/studyCohorts/reg.currentCount` without creating `/studyEnrollments/{uid}` in the same transaction -> DENIED (`existsAfter` fails).
+20. **Enroll Without Consent:** User creating `/studyEnrollments/{uid}` without `/studyConsents/{uid}_v1_0` -> DENIED (`exists` check fails).
+21. **Participant Admin-Override Spoofing:** Student updating own `/studyEnrollments/{uid}` with `adminOverrideLevel: "nit"` -> DENIED (`affectedKeys().hasOnly` blocks `adminOverrideLevel`).
+22. **Cross-User Telemetry Scraping:** Non-admin `list /studyEvents` or `list /studyFeedback` -> DENIED (`existing().uid == request.auth.uid`).
+

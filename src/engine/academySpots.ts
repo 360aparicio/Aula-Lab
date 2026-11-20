@@ -8,7 +8,7 @@
 
 import { Card, Suit, cardId } from './cards';
 import { getActiveStorageUserUid, readScopedJson, writeScopedJson } from '../lib/userStorage';
-import { cryptoShuffle } from '../lib/random';
+import { fisherYatesShuffle } from '../lib/random';
 
 export type AcademyCategory =
   | 'dry_flop'
@@ -2577,7 +2577,7 @@ function permuteSuitText(text: string, suitMap: Record<Suit, Suit>): string {
  * Mantiene 100% intacta la matemática EV/Nash mientras hace cada reparto visualmente único.
  */
 export function permuteScenarioSuits(sc: QuizScenario): QuizScenario {
-  const permutedSuits = cryptoShuffle(SUIT_LIST);
+  const permutedSuits = fisherYatesShuffle(SUIT_LIST);
   const suitMap: Record<Suit, Suit> = {
     s: permutedSuits[0],
     h: permutedSuits[1],
@@ -2601,7 +2601,7 @@ export function permuteScenarioSuits(sc: QuizScenario): QuizScenario {
       suit: suitMap[b.suit],
       id: cardId(b.rank, suitMap[b.suit])
     })),
-    options: cryptoShuffle(
+    options: fisherYatesShuffle(
       sc.options.map(o => ({
         ...o,
         label: permuteSuitText(o.label, suitMap)
@@ -2613,13 +2613,56 @@ export function permuteScenarioSuits(sc: QuizScenario): QuizScenario {
 const ACADEMY_QUEUE_KEY = 'lab_studio_academy_queue_v2';
 const sessionSeenByUid = new Map<string, Set<string>>();
 
+export function markAcademyScenarioSeen(scenarioId: string, uidOverride?: string): void {
+  const uid = uidOverride || getActiveStorageUserUid();
+  let sessionSeen = sessionSeenByUid.get(uid);
+  if (!sessionSeen) {
+    sessionSeen = new Set<string>();
+    sessionSeenByUid.set(uid, sessionSeen);
+  }
+  sessionSeen.add(scenarioId);
+}
+
 export function resetAcademySessionHistory(uidOverride?: string): void {
   const uid = uidOverride || getActiveStorageUserUid();
   sessionSeenByUid.delete(uid);
 }
 
 /**
- * Devuelve una mano garantizadamente nueva de la baraja no vista de la categoría para el usuario activo.
+ * Pre-baraja toda la colección de preguntas de una categoría mediante Fisher-Yates
+ * antes de renderizar la sesión, devolviendo una cola única permutada por palo.
+ */
+export function buildShuffledAcademySessionQueue(
+  category: AcademyCategory,
+  excludeId?: string
+): QuizScenario[] {
+  const pool = ACADEMY_SCENARIO_BANK[category] || ACADEMY_SCENARIO_BANK.dry_flop;
+  const uid = getActiveStorageUserUid();
+
+  let sessionSeen = sessionSeenByUid.get(uid);
+  if (!sessionSeen) {
+    sessionSeen = new Set<string>();
+    sessionSeenByUid.set(uid, sessionSeen);
+  }
+
+  let candidates = pool.filter(item => !sessionSeen!.has(item.id));
+  if (candidates.length === 0) {
+    for (const item of pool) {
+      sessionSeen.delete(item.id);
+    }
+    candidates = [...pool];
+  }
+
+  const shuffled = fisherYatesShuffle(candidates);
+  if (excludeId && shuffled.length > 1 && shuffled[0].id === excludeId) {
+    shuffled.push(shuffled.shift() as QuizScenario);
+  }
+
+  return shuffled.map(permuteScenarioSuits);
+}
+
+/**
+ * Devuelve una mano garantizadamente nueva de la baraja barajada con Fisher-Yates para el usuario activo.
  * Garantiza CERO repeticiones dentro de la misma sesión en toda la categoría (y en Quiz Infinito),
  * además de permutación isomórfica aleatoria de palos en cada reparto.
  */
@@ -2643,16 +2686,14 @@ export function getNextAcademyScenario(
     : [];
 
   if (remainingIds.length === 0) {
-    // Prefer unseen-in-session spots from this category first
     const unseenInSession = pool.map(item => item.id).filter(id => !sessionSeen!.has(id));
     if (unseenInSession.length > 0) {
-      remainingIds = cryptoShuffle(unseenInSession);
+      remainingIds = fisherYatesShuffle(unseenInSession);
     } else {
-      // Full session deck exhausted for this category: clear category from sessionSeen and shuffle fresh
       for (const item of pool) {
         sessionSeen.delete(item.id);
       }
-      remainingIds = cryptoShuffle(pool.map(item => item.id));
+      remainingIds = fisherYatesShuffle(pool.map(item => item.id));
     }
   }
 
@@ -2700,7 +2741,7 @@ export function buildEvaluationExam(
       '3b-1',
       'bc-4'
     ];
-    return cryptoShuffle(
+    return fisherYatesShuffle(
       fixedIds
         .map(id => all.find(s => s.id === id))
         .filter((s): s is QuizScenario => Boolean(s))
@@ -2723,10 +2764,10 @@ export function buildEvaluationExam(
 
   if (filtered.length < filters.questionCount) {
     const remaining = all.filter(s => !filtered.some(f => f.id === s.id));
-    filtered = [...filtered, ...cryptoShuffle(remaining)];
+    filtered = [...filtered, ...fisherYatesShuffle(remaining)];
   }
 
-  return cryptoShuffle(filtered)
+  return fisherYatesShuffle(filtered)
     .slice(0, filters.questionCount)
     .map(permuteScenarioSuits);
 }

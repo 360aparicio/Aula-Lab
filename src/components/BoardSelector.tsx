@@ -6,8 +6,10 @@
  */
 
 import React, { useState } from 'react';
-import { Card, cardId, cardToString, parseCard, RANKS, SUIT_COLORS, SUIT_SYMBOLS, SUITS } from '../engine/cards';
-import { X, Plus } from 'lucide-react';
+import { Card, cardId, RANKS, SUIT_SYMBOLS, SUITS } from '../engine/cards';
+import { useDeckTheme } from '../context/DeckThemeContext';
+import { PlayingCard } from './PlayingCard';
+import { Plus, X } from 'lucide-react';
 
 interface BoardSelectorProps {
   board: Card[];
@@ -22,6 +24,7 @@ export const BoardSelector: React.FC<BoardSelectorProps> = ({
   street,
   onStreetChange
 }) => {
+  const { deckTheme } = useDeckTheme();
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [selectedSlotIndex, setSelectedSlotIndex] = useState<number | null>(null);
 
@@ -103,34 +106,14 @@ export const BoardSelector: React.FC<BoardSelectorProps> = ({
         {Array.from({ length: maxCards }).map((_, idx) => {
           const card = board[idx];
           if (card) {
-            const suitStyle = SUIT_COLORS[card.suit];
             return (
-              <div
+              <PlayingCard
                 key={idx}
+                card={card}
+                size="md"
                 onClick={() => handleCardClick(idx)}
-                className={`relative group w-14 h-20 rounded-lg bg-neutral-950 border ${suitStyle.border} flex flex-col justify-between p-1.5 cursor-pointer hover:border-neutral-500 transition-all shadow-sm`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className={`text-base font-bold leading-none ${suitStyle.text}`}>
-                    {card.rank}
-                  </span>
-                  <span className={`text-xs ${suitStyle.text}`}>
-                    {SUIT_SYMBOLS[card.suit]}
-                  </span>
-                </div>
-                <div className="flex justify-center items-center my-auto">
-                  <span className={`text-2xl leading-none ${suitStyle.text}`}>
-                    {SUIT_SYMBOLS[card.suit]}
-                  </span>
-                </div>
-                <button
-                  onClick={(e) => handleRemoveCard(e, idx)}
-                  className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-neutral-800 hover:bg-red-700 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity border border-neutral-700"
-                  title="Remove card"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
+                onRemove={(e) => handleRemoveCard(e, idx)}
+              />
             );
           }
 
@@ -170,11 +153,13 @@ export const BoardSelector: React.FC<BoardSelectorProps> = ({
 
             <div className="space-y-3">
               {SUITS.map(suit => {
-                const suitStyle = SUIT_COLORS[suit];
+                const suitText = deckTheme.suitText[suit];
+                const suitBorder = deckTheme.suitBorder[suit];
+                const cellBg = deckTheme.pickerCellBg[suit];
                 return (
                   <div key={suit} className="flex items-center gap-1.5">
                     <div className="w-7 text-center">
-                      <span className={`text-base font-bold ${suitStyle.text}`}>
+                      <span className={`text-base font-bold ${suitText}`}>
                         {SUIT_SYMBOLS[suit]}
                       </span>
                     </div>
@@ -187,10 +172,10 @@ export const BoardSelector: React.FC<BoardSelectorProps> = ({
                             key={rank}
                             disabled={isTaken}
                             onClick={() => handleSelectCard(rank, suit)}
-                            className={`h-9 rounded flex items-center justify-center font-bold text-xs transition-colors ${
+                            className={`h-9 rounded flex items-center justify-center font-bold text-xs transition-colors cursor-pointer ${
                               isTaken
                                 ? 'bg-neutral-950 text-neutral-700 cursor-not-allowed opacity-40'
-                                : `${suitStyle.bg} ${suitStyle.text} border ${suitStyle.border} hover:brightness-125`
+                                : `${cellBg} ${suitText} border ${suitBorder}`
                             }`}
                           >
                             {rank}

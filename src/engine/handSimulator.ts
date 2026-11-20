@@ -12,12 +12,69 @@ import { Card, FULL_DECK, RANK_VALUES, Rank, cardToString } from './cards';
 import { evaluateCards } from './evaluator';
 import { analyzeBoardTexture } from './learner';
 import { AutoLearningEngine } from './autoLearningEngine';
-import { readScopedItem, writeScopedItem, removeScopedItem } from '../lib/userStorage';
-import { cryptoPick, cryptoRandomFloat, cryptoRandomInt, cryptoShuffle } from '../lib/random';
+import { readScopedItem, writeScopedItem, removeScopedItem, readScopedJson, writeScopedJson } from '../lib/userStorage';
+import { cryptoPick, cryptoRandomFloat, cryptoRandomInt, fisherYatesShuffle } from '../lib/random';
 import type { TablePosition } from '../components/HandAndPositionBar';
 
 const rankNum = (r: Rank): number => RANK_VALUES[r] + 2;
 const createDeck = (): Card[] => [...FULL_DECK];
+
+export const SIM_RECENT_HANDS_STORAGE_KEY = 'allin_sim_recent_hands_v1';
+const SIM_RECENT_LIMIT = 180;
+
+/**
+ * Semilla aleatoria dinámica alimentada directamente por Crypto.getRandomValues.
+ * Mezcla 128 bits de entropía hardware por sesión y por reparto para impedir
+ * cualquier secuencia repetible entre sesiones.
+ */
+export function generateDynamicCryptoSeed(): Uint32Array {
+  const seed = new Uint32Array(4);
+  if (typeof globalThis !== 'undefined' && globalThis.crypto?.getRandomValues) {
+    globalThis.crypto.getRandomValues(seed);
+  } else {
+    const now = Date.now() >>> 0;
+    seed[0] = now ^ 0xa5a55a5a;
+    seed[1] = (now * 2654435761) >>> 0;
+    seed[2] = cryptoRandomInt(0x7fffffff);
+    seed[3] = cryptoRandomInt(0x7fffffff);
+  }
+  return seed;
+}
+
+const SESSION_DYNAMIC_SEED = generateDynamicCryptoSeed();
+
+export function pickTrueRandomDeckIndex(bound: number): number {
+  if (bound <= 1) return 0;
+  if (typeof globalThis !== 'undefined' && globalThis.crypto?.getRandomValues) {
+    const words = new Uint32Array(2);
+    const maxUint = 0x100000000;
+    const limit = Math.floor(maxUint / bound) * bound;
+    for (let k = 0; k < 16; k++) {
+      globalThis.crypto.getRandomValues(words);
+      const mixed = (words[0] ^ SESSION_DYNAMIC_SEED[k % 4] ^ words[1]) >>> 0;
+      if (mixed < limit) {
+        return mixed % bound;
+      }
+    }
+    return words[0] % bound;
+  }
+  return cryptoRandomInt(bound);
+}
+
+export function loadPersistedSimulatedFingerprints(): string[] {
+  const stored = readScopedJson<string[]>(SIM_RECENT_HANDS_STORAGE_KEY, []);
+  return Array.isArray(stored) ? stored.filter(x => typeof x === 'string') : [];
+}
+
+function appendPersistedSimulatedFingerprint(fp: string): void {
+  const current = loadPersistedSimulatedFingerprints().filter(k => k !== fp);
+  const next = [...current, fp].slice(-SIM_RECENT_LIMIT);
+  writeScopedJson(SIM_RECENT_HANDS_STORAGE_KEY, next);
+}
+
+export function resetSimulatedHandHistory(): void {
+  removeScopedItem(SIM_RECENT_HANDS_STORAGE_KEY);
+}
 
 export type SimPosition = TablePosition;
 export type SimScenarioType =
@@ -256,11 +313,19 @@ export function resetLiveChallengeState(startActive = true): LiveChallengeState 
 }
 
 function pickRandom<T>(arr: readonly T[]): T {
-  return cryptoPick(arr);
+  if (arr.length <= 1) return arr[0];
+  return arr[pickTrueRandomDeckIndex(arr.length)];
 }
 
 function shuffledDeck(): Card[] {
-  return cryptoShuffle(createDeck());
+  // Doble barajado Fisher-Yates con semilla dinámica Crypto.getRandomValues
+  const firstPass = fisherYatesShuffle(createDeck());
+  const copy = [...firstPass];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = pickTrueRandomDeckIndex(i + 1);
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
 }
 
 export function canonicalHandNotation(c1: Card, c2: Card): string {
@@ -373,10 +438,10 @@ function pickPlayableHeroCards(
   const exactPairs = hints?.exactPairs || new Set<string>();
   const spotCanonicals = hints?.spotCanonicals || new Set<string>();
 
-  // Sample random indices across the freshly shuffled deck so pair distribution stays truly uniform
+  // Selecciona índices aleatorios reales en el mazo barajado mediante Crypto.getRandomValues (sin buffer secuencial)
   for (let attempt = 0; attempt < 90; attempt++) {
-    const idx1 = cryptoRandomInt(deck.length);
-    let idx2 = cryptoRandomInt(deck.length - 1);
+    const idx1 = pickTrueRandomDeckIndex(deck.length);
+    let idx2 = pickTrueRandomDeckIndex(deck.length - 1);
     if (idx2 >= idx1) idx2 += 1;
 
     const c1 = deck[idx1];
@@ -394,7 +459,7 @@ function pickPlayableHeroCards(
     const exact = exactHeroPairKey(c1, c2);
     const spotCan = `${scenario}|${heroPos}|${canonical}`;
 
-    // Strict novelty check for first 55 tries, then relax canonical before exact combo
+    // Control estricto de novedad antes de relajar restricciones
     if (attempt < 55 && (exactPairs.has(exact) || recentCanonSet.has(canonical) || spotCanonicals.has(spotCan))) {
       continue;
     }
@@ -403,10 +468,17 @@ function pickPlayableHeroCards(
     }
 
     const remaining = deck.filter((_, idx) => idx !== idx1 && idx !== idx2);
-    return { hero: [c1, c2], remaining: cryptoShuffle(remaining) };
+    return { hero: [c1, c2], remaining: fisherYatesShuffle(remaining) };
   }
 
-  return { hero: [deck[0], deck[1]], remaining: deck.slice(2) };
+  // Fallback también con índice aleatorio real (nunca deck[0], deck[1] secuencial)
+  const fallbackIdx1 = pickTrueRandomDeckIndex(deck.length);
+  let fallbackIdx2 = pickTrueRandomDeckIndex(deck.length - 1);
+  if (fallbackIdx2 >= fallbackIdx1) fallbackIdx2 += 1;
+  const fallbackRemaining = fisherYatesShuffle(
+    deck.filter((_, idx) => idx !== fallbackIdx1 && idx !== fallbackIdx2)
+  );
+  return { hero: [deck[fallbackIdx1], deck[fallbackIdx2]], remaining: fallbackRemaining };
 }
 
 function buildPreflopDecisionNode(
@@ -556,7 +628,7 @@ function resolvePositionalMatchup(
   const others = SIM_POSITIONS.filter(p => p !== heroPos);
 
   if (scenario === 'MULTIWAY') {
-    const shuffledOthers = cryptoShuffle(others);
+    const shuffledOthers = fisherYatesShuffle(others);
     const oppCount = cryptoRandomFloat() < 0.35 && shuffledOthers.length >= 3 ? 3 : 2;
     const picked = shuffledOthers.slice(0, oppCount);
     return {
@@ -848,7 +920,9 @@ export function createSimulatedHand(params: {
   tablePreset?: TablePoolPreset;
 }): SimulatedHandState {
   const allScenarios: SimScenarioType[] = Object.keys(SCENARIO_META) as SimScenarioType[];
-  const hints = parseRecentKeyHints(params.recentKeys);
+  const persistedRecent = loadPersistedSimulatedFingerprints();
+  const mergedRecentKeys = Array.from(new Set([...persistedRecent, ...(params.recentKeys || [])]));
+  const hints = parseRecentKeyHints(mergedRecentKeys);
   const chosenScenario: SimScenarioType =
     params.scenarioFilter === 'RANDOM'
       ? pickFromBagAvoidingRecent(allScenarios, hints.recentScenarios)
@@ -858,17 +932,23 @@ export function createSimulatedHand(params: {
       ? pickFromBagAvoidingRecent(SIM_POSITIONS, hints.recentPositions)
       : params.positionFilter;
 
-  let hero: [Card, Card] = [FULL_DECK[0], FULL_DECK[1]];
-  let remaining: Card[] = FULL_DECK.slice(2);
+  const initialDeck = shuffledDeck();
+  const initialIdx1 = pickTrueRandomDeckIndex(initialDeck.length);
+  let initialIdx2 = pickTrueRandomDeckIndex(initialDeck.length - 1);
+  if (initialIdx2 >= initialIdx1) initialIdx2 += 1;
+  let hero: [Card, Card] = [initialDeck[initialIdx1], initialDeck[initialIdx2]];
+  let remaining: Card[] = fisherYatesShuffle(
+    initialDeck.filter((_, idx) => idx !== initialIdx1 && idx !== initialIdx2)
+  );
   let fullRunout: [Card, Card, Card, Card, Card] = [
-    FULL_DECK[2],
-    FULL_DECK[3],
-    FULL_DECK[4],
-    FULL_DECK[5],
-    FULL_DECK[6]
+    remaining[0],
+    remaining[1],
+    remaining[2],
+    remaining[3],
+    remaining[4]
   ];
 
-  for (let dealTry = 0; dealTry < 8; dealTry++) {
+  for (let dealTry = 0; dealTry < 10; dealTry++) {
     const deck = shuffledDeck();
     const dealt = pickPlayableHeroCards(deck, chosenHeroPos, chosenScenario, hints);
     const candidateRunout: [Card, Card, Card, Card, Card] = [
@@ -892,6 +972,13 @@ export function createSimulatedHand(params: {
       break;
     }
   }
+  const finalFingerprint = buildSimulatedHandFingerprint({
+    scenario: chosenScenario,
+    heroPos: chosenHeroPos,
+    heroCards: hero,
+    fullRunout
+  });
+  appendPersistedSimulatedFingerprint(finalFingerprint);
   let cursor = 5;
 
   const { ipVillains, oopVillains } = resolvePositionalMatchup(chosenHeroPos, chosenScenario);

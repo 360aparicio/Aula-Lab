@@ -8,9 +8,11 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import { Card, cardId, cardToString, RANKS, SUIT_COLORS, SUIT_SYMBOLS, SUITS } from '../engine/cards';
+import { Card, cardId, RANKS, SUIT_SYMBOLS, SUITS } from '../engine/cards';
 import { createConcreteComboFromCards } from '../engine/combos';
-import { ArrowLeftRight, Edit3, Shuffle, X, Check, Eye } from 'lucide-react';
+import { useDeckTheme } from '../context/DeckThemeContext';
+import { PlayingCard } from './PlayingCard';
+import { ArrowLeftRight, Edit3, Shuffle, X, Check } from 'lucide-react';
 
 export type TablePosition = 'EP' | 'MP' | 'CO' | 'BTN' | 'SB' | 'BB';
 
@@ -75,6 +77,7 @@ export const HandAndPositionBar: React.FC<HandAndPositionBarProps> = ({
   boardCards,
   extraAction
 }) => {
+  const { deckTheme } = useDeckTheme();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [pickerCard1, setPickerCard1] = useState<Card | null>(heroCards ? heroCards[0] : null);
   const [pickerCard2, setPickerCard2] = useState<Card | null>(heroCards ? heroCards[1] : null);
@@ -122,38 +125,21 @@ export const HandAndPositionBar: React.FC<HandAndPositionBarProps> = ({
     }
   };
 
-  const renderMiniCard = (card: Card) => {
-    const style = SUIT_COLORS[card.suit];
-    return (
-      <div
-        key={card.id}
-        className={`w-10 h-14 rounded-lg bg-neutral-950 border ${style.border} flex flex-col justify-between p-1 shadow-md select-none`}
-      >
-        <div className="flex items-center justify-between">
-          <span className={`text-xs font-bold leading-none ${style.text}`}>{card.rank}</span>
-          <span className={`text-[10px] ${style.text}`}>{SUIT_SYMBOLS[card.suit]}</span>
-        </div>
-        <div className="flex justify-center items-center my-auto">
-          <span className={`text-lg leading-none ${style.text}`}>{SUIT_SYMBOLS[card.suit]}</span>
-        </div>
-      </div>
-    );
-  };
+  const renderMiniCard = (card: Card) => (
+    <PlayingCard key={card.id} card={card} size="sm" />
+  );
 
   const currentCombo = heroCards
     ? createConcreteComboFromCards(heroCards[0], heroCards[1])
     : null;
 
   return (
-    <div className="bg-neutral-900 border border-emerald-500/40 rounded-xl p-4 shadow-lg flex flex-col gap-3">
+    <div className="bg-neutral-900/50 border border-neutral-800/80 rounded-2xl p-4 flex flex-col gap-3">
       {/* Title strip */}
-      <div className="flex items-center justify-between border-b border-neutral-800 pb-2">
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-500" />
-          <h2 className="text-xs font-bold uppercase tracking-wider text-white">
-            Configuración de Posición y Cartas del Jugador (Hero)
-          </h2>
-        </div>
+      <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-neutral-200">
+          Posición y Cartas del Jugador (Hero)
+        </h2>
         {extraAction}
       </div>
 
@@ -365,14 +351,15 @@ export const HandAndPositionBar: React.FC<HandAndPositionBarProps> = ({
               )}
             </div>
 
-            {/* 4-Color Card Grid */}
             <div className="space-y-2.5">
               {SUITS.map(suit => {
-                const suitStyle = SUIT_COLORS[suit];
+                const suitText = deckTheme.suitText[suit];
+                const suitBorder = deckTheme.suitBorder[suit];
+                const cellBg = deckTheme.pickerCellBg[suit];
                 return (
                   <div key={suit} className="flex items-center gap-1.5">
                     <div className="w-7 text-center">
-                      <span className={`text-base font-bold ${suitStyle.text}`}>
+                      <span className={`text-base font-bold ${suitText}`}>
                         {SUIT_SYMBOLS[suit]}
                       </span>
                     </div>
@@ -391,12 +378,12 @@ export const HandAndPositionBar: React.FC<HandAndPositionBarProps> = ({
                             type="button"
                             disabled={isDead}
                             onClick={() => handleCardClick(cardObj)}
-                            className={`h-9 rounded flex items-center justify-center font-bold text-xs transition-all ${
+                            className={`h-9 rounded flex items-center justify-center font-bold text-xs transition-all cursor-pointer ${
                               isDead
                                 ? 'bg-neutral-950 text-neutral-800 line-through cursor-not-allowed border border-neutral-900'
                                 : isSelected
                                 ? 'bg-emerald-500 text-white ring-2 ring-emerald-300 font-extrabold scale-105 z-10'
-                                : `${suitStyle.bg} ${suitStyle.text} border ${suitStyle.border} hover:brightness-125`
+                                : `${cellBg} ${suitText} border ${suitBorder}`
                             }`}
                           >
                             {rank}

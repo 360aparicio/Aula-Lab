@@ -12,7 +12,7 @@ import { ConcreteHandWithWeight } from '../engine/range';
 import { NodeStrategyResult, SolveResult } from '../engine/dcfr';
 import { compareHands, evaluateCards } from '../engine/evaluator';
 import { readScopedItem, removeScopedItem, writeScopedItem } from '../lib/userStorage';
-import { cryptoRandomFloat } from '../lib/random';
+import { cryptoPick, cryptoRandomFloat } from '../lib/random';
 
 export type ActionGrade = 'optimal' | 'acceptable' | 'inaccuracy' | 'mistake' | 'blunder';
 
@@ -172,7 +172,7 @@ export function dealRandomHeroHand(
 
   let totalWeight = 0;
   for (const c of pool) totalWeight += c.weight;
-  if (totalWeight <= 0) return pool[0];
+  if (totalWeight <= 0) return cryptoPick(pool);
 
   let r = cryptoRandomFloat() * totalWeight;
   for (const c of pool) {
@@ -338,7 +338,7 @@ export function sampleVillainAction(
   const entries = Object.entries(dist);
   if (entries.length === 0) return { actionKey: 'CHECK', frequency: 1.0 };
 
-  const r = Math.random();
+  const r = cryptoRandomFloat();
   let cum = 0;
   for (const [actionKey, freq] of entries) {
     cum += freq;

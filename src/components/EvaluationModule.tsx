@@ -19,7 +19,8 @@ import {
   type EvaluationMode,
   type EvaluationQuestion
 } from '../engine/evaluationBank';
-import { Card, SUIT_COLORS, SUIT_SYMBOLS } from '../engine/cards';
+import { Card, SUIT_SYMBOLS } from '../engine/cards';
+import { PlayingCard } from './PlayingCard';
 import { AutoLearningEngine } from '../engine/autoLearningEngine';
 import { SolverMetaUpdater } from '../engine/solverMetaUpdater';
 import { useAuth } from '../context/AuthContext';
@@ -158,17 +159,9 @@ interface AnswerRecord {
   evLossPct: number;
 }
 
-const CardChip: React.FC<{ card: Card; size?: 'sm' | 'md' }> = ({ card, size = 'md' }) => {
-  const dims = size === 'sm' ? 'w-9 h-12 text-sm' : 'w-11 h-15 text-base';
-  return (
-    <div
-      className={`${dims} bg-neutral-950 rounded-lg border border-neutral-700 flex flex-col items-center justify-center font-mono font-bold shadow`}
-    >
-      <span className={SUIT_COLORS[card.suit].text}>{card.rank}</span>
-      <span className={`text-xs ${SUIT_COLORS[card.suit].text}`}>{SUIT_SYMBOLS[card.suit]}</span>
-    </div>
-  );
-};
+const CardChip: React.FC<{ card: Card; size?: 'sm' | 'md' }> = ({ card, size = 'md' }) => (
+  <PlayingCard card={card} size={size === 'sm' ? 'xs' : 'sm'} />
+);
 
 export const EVAL_DAILY_QUOTA_KEY = 'lab_studio_eval_daily_v1';
 
@@ -439,24 +432,24 @@ export const EvaluationModule: React.FC = () => {
   const currentQuestion = examQuestions[currentIdx];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-7">
       {/* Centro Educativo Personalizado Header */}
-      <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-6 space-y-5 shadow-2xl">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="flex items-start gap-3">
+      <div className="bg-neutral-900/55 border border-neutral-800/80 rounded-2xl p-6 sm:p-7 shadow-sm shadow-black/30 ring-1 ring-inset ring-white/[0.03] space-y-6">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+          <div className="flex items-start gap-3.5">
             <div className="p-2.5 bg-blue-500/10 rounded-xl border border-blue-500/30 text-blue-400 shrink-0">
               <GraduationCap className="w-6 h-6" />
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-lg font-bold text-white">
+                <h3 className="text-xl font-bold tracking-tight text-white">
                   Centro Educativo Personalizado &amp; Evaluaciones Allin School
                 </h3>
-                <span className="text-[11px] font-mono px-2.5 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-500/40">
-                  {bankCounts.total} Preguntas Únicas Sin Repetición
+                <span className="text-xs font-mono text-blue-400 font-normal">
+                  · {bankCounts.total} preguntas únicas sin repetición
                 </span>
               </div>
-              <p className="text-xs text-neutral-400 mt-1 max-w-2xl">
+              <p className="text-xs sm:text-sm text-neutral-400 mt-1.5 max-w-2xl leading-relaxed">
                 Avanza desde Nivel 1 (Micro-Límites) hasta Nivel 4 (High-Stakes) según tus resultados. Cada modalidad
                 cuenta con más de 240 escenarios curados sin repeticiones al volver a evaluarte.
               </p>
@@ -555,8 +548,8 @@ export const EvaluationModule: React.FC = () => {
 
       {/* Mode Configurator & 4-Level Ladder (visible when not taking an active exam) */}
       {!isExamActive && (
-        <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-6 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-neutral-900/55 border border-neutral-800/80 rounded-2xl p-6 sm:p-7 shadow-sm shadow-black/30 ring-1 ring-inset ring-white/[0.03] space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             <button
               type="button"
               onClick={() => setEvalMode('levels')}
@@ -834,7 +827,7 @@ export const EvaluationModule: React.FC = () => {
             <button
               type="button"
               onClick={() => startExam()}
-              className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-500/20 transition-all cursor-pointer"
+              className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold shadow-sm shadow-black/30 transition-colors cursor-pointer"
             >
               <Play className="w-4 h-4 fill-current" />
               <span>{isExamFinished ? 'Repetir con Preguntas Nuevas' : 'Comenzar Evaluación'}</span>
@@ -845,8 +838,8 @@ export const EvaluationModule: React.FC = () => {
 
       {/* Active Exam Runner */}
       {isExamActive && currentQuestion && (
-        <div className="bg-neutral-950 border border-blue-500/40 rounded-2xl p-6 space-y-5 shadow-2xl">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-800 pb-3 text-xs font-mono">
+        <div className="bg-neutral-900/55 border border-blue-500/35 rounded-2xl p-6 sm:p-7 space-y-6 shadow-md shadow-black/30 ring-1 ring-inset ring-white/[0.04]">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-800/80 pb-3.5 text-xs font-mono">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-blue-400 font-bold">
                 Pregunta {currentIdx + 1} / {examQuestions.length}
@@ -930,7 +923,7 @@ export const EvaluationModule: React.FC = () => {
 
       {/* Visual Results & Dummies Hand Replay Audit */}
       {isExamFinished && answers.length > 0 && (
-        <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-6 space-y-6">
+        <div className="bg-neutral-900/55 border border-neutral-800/80 rounded-2xl p-6 sm:p-7 space-y-7 shadow-sm shadow-black/30 ring-1 ring-inset ring-white/[0.03]">
           {(() => {
             const correctCount = answers.filter(a => a.isCorrect).length;
             const total = answers.length;
@@ -996,7 +989,7 @@ export const EvaluationModule: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => startExam()}
-                      className="flex items-center gap-1.5 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold cursor-pointer shadow-lg shadow-blue-500/20"
+                      className="flex items-center gap-1.5 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold cursor-pointer shadow-sm shadow-black/30 transition-colors"
                     >
                       <RotateCcw className="w-3.5 h-3.5" />
                       <span>Nueva Evaluación (Sin Repetir Preguntas)</span>
@@ -1005,8 +998,8 @@ export const EvaluationModule: React.FC = () => {
                 </div>
 
                 {/* Visual Replay Cards for Every Single Hand */}
-                <div className="space-y-4">
-                  <h5 className="text-xs font-bold uppercase tracking-wider text-neutral-400">
+                <div className="space-y-5">
+                  <h5 className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
                     Recuerdo Visual Mano a Mano y Explicación Clara ({answers.length} Manos)
                   </h5>
 
@@ -1015,9 +1008,9 @@ export const EvaluationModule: React.FC = () => {
                     return (
                       <div
                         key={`${ans.question.id}-${idx}`}
-                        className={`p-5 rounded-2xl border space-y-4 ${
+                        className={`p-6 rounded-2xl border space-y-5 shadow-sm shadow-black/25 ${
                           ans.isCorrect
-                            ? 'bg-neutral-900/60 border-neutral-800'
+                            ? 'bg-neutral-950/80 border-neutral-800/80'
                             : 'bg-rose-950/15 border-rose-800/50'
                         }`}
                       >
@@ -1122,7 +1115,7 @@ export const EvaluationModule: React.FC = () => {
                           </div>
                           <p className="text-neutral-200 leading-relaxed">{ans.question.explanationDummies}</p>
                           <div className="pt-1.5 border-t border-neutral-800/70 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                            <span className="text-blue-300 font-semibold">💡 {ans.question.dummiesTip}</span>
+                            <span className="text-blue-300 font-semibold">Regla clave: {ans.question.dummiesTip}</span>
                             {!ans.isCorrect && (
                               <span className="text-rose-300 flex items-center gap-1">
                                 <AlertTriangle className="w-3.5 h-3.5 shrink-0" />

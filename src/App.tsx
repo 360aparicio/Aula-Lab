@@ -46,6 +46,7 @@ import { LoginScreen } from './components/LoginScreen';
 import { PlanBenefitsModal } from './components/PlanBenefitsModal';
 import { SupportTicketModal } from './components/SupportTicketModal';
 import { LegalNoticeModal } from './components/LegalNoticeModal';
+import { UserSettingsModal } from './components/UserSettingsModal';
 import { FundamentalsModule } from './components/FundamentalsModule';
 import { Onboarding60sBanner } from './components/OnboardingAndLeaksBar';
 import { LAB_SECTION_META } from './lib/planCatalog';
@@ -61,9 +62,35 @@ import {
   type OnboardingState
 } from './lib/experienceMode';
 import { db, handleFirestoreError, OperationType } from './lib/firebase';
-import { collection, limit, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, doc, limit, onSnapshot, query, where } from 'firebase/firestore';
+import { AdaptiveOnboardingModal } from './components/study/AdaptiveOnboardingModal';
+import { StudyFeedbackModal } from './components/study/StudyFeedbackModal';
+import { evaluateMarketStudyFlag, MARKET_STUDY_FLAG_ID, readClientEnvMarketStudyFlag } from './lib/study/featureFlags';
+import {
+  STUDY_LEVEL_CONFIGS,
+  mapLegacyExperienceToStudyLevel,
+  mapStudyLevelToLegacyExperience,
+  resolveEffectiveStudyLevel
+} from './lib/study/levelConfig';
+import { getDueStudyMilestone } from './lib/study/milestoneScheduler';
+import {
+  fetchAllStudyCohorts,
+  fetchMyConsentAndEnrollment,
+  flushStudyEventsBatch,
+  updateSelfSelectedStudyLevel
+} from './lib/study/studyService';
+import { studyTelemetry } from './lib/study/telemetryClient';
+import {
+  STUDY_LEVELS,
+  type FeatureFlagDoc,
+  type StudyCohortDoc,
+  type StudyConsentDoc,
+  type StudyEnrollmentDoc,
+  type StudyLevel,
+  type StudyMilestone
+} from './lib/study/studyTypes';
 
-import { Play, Pause, Square, SlidersHorizontal, Compass, Lock, Crown, Megaphone, X, Sparkles, Scale } from 'lucide-react';
+import { Play, Pause, Square, SlidersHorizontal, Compass, Lock, Crown, Megaphone, X, Sparkles, Scale, ClipboardCheck, ShieldCheck } from 'lucide-react';
 
 interface LiveAnnouncementBanner {
   id: string;
@@ -116,9 +143,27 @@ function LabWorkspace() {
   const [showPlanBenefitsModal, setShowPlanBenefitsModal] = useState<boolean>(false);
   const [showSupportModal, setShowSupportModal] = useState<boolean>(false);
   const [showLegalModal, setShowLegalModal] = useState<boolean>(false);
+  const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
   const [announcements, setAnnouncements] = useState<LiveAnnouncementBanner[]>([]);
   const [dismissedAnnIds, setDismissedAnnIds] = useState<string[]>([]);
   const [onboardingState, setOnboardingState] = useState<OnboardingState>(() => loadOnboardingState());
+
+  // Market Study v1 state (strictly NO-OP when marketStudyEnabled === false)
+  const [marketStudyFlag, setMarketStudyFlag] = useState<FeatureFlagDoc>(() =>
+    evaluateMarketStudyFlag({ envFlagValue: readClientEnvMarketStudyFlag() })
+  );
+  const marketStudyEnabled = marketStudyFlag.enabled;
+  const [studyCohorts, setStudyCohorts] = useState<Record<StudyLevel, StudyCohortDoc>>({
+    fish: { level: 'fish', maxQuota: 100, currentCount: 0, waitlistCount: 0, active: true },
+    reg: { level: 'reg', maxQuota: 100, currentCount: 0, waitlistCount: 0, active: true },
+    nit: { level: 'nit', maxQuota: 100, currentCount: 0, waitlistCount: 0, active: true }
+  });
+  const [studyConsent, setStudyConsent] = useState<StudyConsentDoc | null>(null);
+  const [studyEnrollment, setStudyEnrollment] = useState<StudyEnrollmentDoc | null>(null);
+  const [showStudyOnboarding, setShowStudyOnboarding] = useState<boolean>(false);
+  const [showStudyFeedbackModal, setShowStudyFeedbackModal] = useState<boolean>(false);
+  const [studyFeedbackTab, setStudyFeedbackTab] = useState<'survey' | 'privacy'>('survey');
+  const [studySessionId] = useState<string>(() => `sess_${Date.now()}`);
 
   const handleExperienceLevelChange = (lvl: ExperienceLevel) => {
     setExperienceLevel(lvl);
@@ -157,6 +202,129 @@ function LabWorkspace() {
   const handleReopenOnboarding = () => {
     resetOnboardingState();
     setOnboardingState({ completed: false, dismissed: false });
+  };
+
+  // Live Feature Flag subscription (instant ON/OFF rollback < 5 min — Rules R1/R2/R8)
+  useEffect(() => {
+    if (!isAuthReady || !user || !user.emailVerified) return;
+    const unsubscribe = onSnapshot(
+      doc(db, 'featureFlags', MARKET_STUDY_FLAG_ID),
+      (snap) => {
+        const remote = snap.exists() ? (snap.data() as Partial<FeatureFlagDoc>) : null;
+        setMarketStudyFlag(
+          evaluateMarketStudyFlag({
+            envFlagValue: readClientEnvMarketStudyFlag(),
+            remoteFlagDoc: remote
+          })
+        );
+      },
+      () => {
+        setMarketStudyFlag(evaluateMarketStudyFlag({ envFlagValue: readClientEnvMarketStudyFlag() }));
+      }
+    );
+    return () => unsubscribe();
+  }, [isAuthReady, user]);
+
+  // Hydrate cohorts, consent, and enrollment ONLY when market_study_v1 === true
+  useEffect(() => {
+    if (!marketStudyEnabled || !isAuthReady || !user || !user.emailVerified) {
+      studyTelemetry.configure({ enabled: false, hasConsent: false });
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [cohortsData, statusData] = await Promise.all([
+          fetchAllStudyCohorts(),
+          fetchMyConsentAndEnrollment(user.uid)
+        ]);
+        if (cancelled) return;
+        setStudyCohorts(cohortsData);
+        setStudyConsent(statusData.consent);
+        setStudyEnrollment(statusData.enrollment);
+
+        const hasActiveConsent = statusData.consent?.status === 'active';
+        studyTelemetry.configure({
+          enabled: true,
+          hasConsent: hasActiveConsent && statusData.enrollment?.status === 'active',
+          onFlush: flushStudyEventsBatch
+        });
+
+        if (statusData.enrollment && statusData.enrollment.status === 'active') {
+          const resolved = resolveEffectiveStudyLevel({
+            adminOverrideLevel: statusData.enrollment.adminOverrideLevel,
+            cohortLevel: statusData.enrollment.cohortLevel,
+            selfSelectedLevel: statusData.enrollment.selfSelectedLevel
+          });
+          handleExperienceLevelChange(mapStudyLevelToLegacyExperience(resolved.effectiveLevel));
+        } else if (!statusData.enrollment) {
+          setShowStudyOnboarding(true);
+        }
+      } catch {
+        // fail-safe: never crash workspace
+      }
+    })();
+
+    const onPageHide = () => {
+      void studyTelemetry.flush();
+    };
+    window.addEventListener('pagehide', onPageHide);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('pagehide', onPageHide);
+      void studyTelemetry.flush();
+    };
+  }, [marketStudyEnabled, isAuthReady, user]);
+
+  // Track tab changes strictly when market_study_v1 === true and user consented
+  useEffect(() => {
+    if (!marketStudyEnabled || !user || studyConsent?.status !== 'active' || studyEnrollment?.status !== 'active') {
+      return;
+    }
+    studyTelemetry.track({
+      uid: user.uid,
+      sessionId: studySessionId,
+      cohortLevel: studyEnrollment.cohortLevel,
+      effectiveLevel: studyEnrollment.effectiveLevel,
+      eventName: 'tab_viewed',
+      module: activeTab,
+      metadata: {
+        density: STUDY_LEVEL_CONFIGS[studyEnrollment.effectiveLevel].densityMode
+      }
+    });
+  }, [activeTab, marketStudyEnabled, user, studyConsent, studyEnrollment, studySessionId]);
+
+  const resolvedStudyState = resolveEffectiveStudyLevel({
+    adminOverrideLevel: studyEnrollment?.adminOverrideLevel,
+    cohortLevel: studyEnrollment?.cohortLevel,
+    selfSelectedLevel: studyEnrollment?.selfSelectedLevel ?? mapLegacyExperienceToStudyLevel(experienceLevel)
+  });
+
+  const dueMilestone = marketStudyEnabled ? getDueStudyMilestone(studyEnrollment) : null;
+
+  const handleStudyLevelSwitch = async (nextLevel: StudyLevel) => {
+    handleExperienceLevelChange(mapStudyLevelToLegacyExperience(nextLevel));
+    if (user && studyEnrollment && studyEnrollment.status === 'active') {
+      try {
+        const updated = await updateSelfSelectedStudyLevel(user, nextLevel);
+        if (updated) {
+          setStudyEnrollment(updated);
+          handleExperienceLevelChange(mapStudyLevelToLegacyExperience(updated.effectiveLevel));
+          studyTelemetry.track({
+            uid: user.uid,
+            sessionId: studySessionId,
+            cohortLevel: updated.cohortLevel,
+            effectiveLevel: updated.effectiveLevel,
+            eventName: 'level_selected',
+            module: 'study_bar',
+            metadata: { requested: nextLevel, effective: updated.effectiveLevel, source: updated.levelSource }
+          });
+        }
+      } catch {
+        // ignore network errors smoothly
+      }
+    }
   };
 
   // Positions & Preflop Action Context
@@ -667,7 +835,7 @@ function LabWorkspace() {
   );
 
   return (
-    <div className="min-h-screen bg-black text-neutral-100 flex flex-col font-sans">
+    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col font-sans">
       {/* Universal Top Bar */}
       <Header
         activeTab={activeTab}
@@ -676,7 +844,14 @@ function LabWorkspace() {
         onQuickSolve={handleStartSolve}
         onOpenPlanBenefits={() => setShowPlanBenefitsModal(true)}
         onOpenSupport={() => setShowSupportModal(true)}
+        onOpenSettings={() => setShowSettingsModal(true)}
         isSolving={isSolving}
+      />
+
+      {/* User Deck & Appearance Settings Modal */}
+      <UserSettingsModal
+        open={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
       />
 
       {/* Plan Benefits & Sections Visibility Modal */}
@@ -700,6 +875,76 @@ function LabWorkspace() {
           setShowSupportModal(true);
         }}
       />
+
+      {/* Market Study v1 Modals (rendered strictly when feature flag is ON) */}
+      {marketStudyEnabled && user && (
+        <AdaptiveOnboardingModal
+          open={showStudyOnboarding}
+          user={user}
+          cohorts={studyCohorts}
+          onClose={() => setShowStudyOnboarding(false)}
+          onEnrolled={(enrollment, effectiveLevel) => {
+            setStudyEnrollment(enrollment);
+            setShowStudyOnboarding(false);
+            const cfg = STUDY_LEVEL_CONFIGS[effectiveLevel];
+            handleExperienceLevelChange(mapStudyLevelToLegacyExperience(effectiveLevel));
+            if (canAccessSection(cfg.defaultTab === 'fundamentals' ? 'wizard' : cfg.defaultTab)) {
+              setActiveTab(cfg.defaultTab);
+            }
+            studyTelemetry.configure({
+              enabled: true,
+              hasConsent: enrollment.status === 'active',
+              onFlush: flushStudyEventsBatch
+            });
+            studyTelemetry.track({
+              uid: user.uid,
+              sessionId: studySessionId,
+              cohortLevel: enrollment.cohortLevel,
+              effectiveLevel: enrollment.effectiveLevel,
+              eventName: 'study_enrolled',
+              module: 'onboarding',
+              metadata: { status: enrollment.status, level: enrollment.cohortLevel }
+            });
+          }}
+        />
+      )}
+
+      {marketStudyEnabled && user && studyEnrollment && (
+        <StudyFeedbackModal
+          open={showStudyFeedbackModal}
+          user={user}
+          enrollment={studyEnrollment}
+          initialMilestone={dueMilestone?.milestone || 'day7'}
+          initialTab={studyFeedbackTab}
+          onClose={() => setShowStudyFeedbackModal(false)}
+          onSubmitted={(milestone: StudyMilestone) => {
+            setStudyEnrollment(prev =>
+              prev
+                ? {
+                    ...prev,
+                    completedSurveys: Array.from(new Set([...(prev.completedSurveys || []), milestone]))
+                  }
+                : prev
+            );
+            studyTelemetry.track({
+              uid: user.uid,
+              sessionId: studySessionId,
+              cohortLevel: studyEnrollment.cohortLevel,
+              effectiveLevel: studyEnrollment.effectiveLevel,
+              eventName: 'survey_submitted',
+              module: 'study_feedback',
+              metadata: { milestone }
+            });
+          }}
+          onWithdrawn={() => {
+            studyTelemetry.clearQueue();
+            studyTelemetry.configure({ enabled: false, hasConsent: false });
+            setStudyEnrollment(prev => (prev ? { ...prev, status: 'withdrawn' } : null));
+            setStudyConsent(prev => (prev ? { ...prev, status: 'revoked' } : null));
+            setShowStudyFeedbackModal(false);
+          }}
+        />
+      )}
 
       {/* Main Workspace Viewport */}
       <main className="flex-1 max-w-[1440px] w-full mx-auto p-4 sm:p-6 pb-20 md:pb-6 flex flex-col gap-6">
@@ -739,46 +984,148 @@ function LabWorkspace() {
           </div>
         )}
 
-        {/* Adaptive Experience Level Selector Bar */}
-        <div className="bg-neutral-950 border border-neutral-800 rounded-2xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-xs">
-            <Sparkles className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-            <span className="font-semibold text-white">Perfil de Estudio:</span>
-            <span className="text-neutral-400 hidden sm:inline">{EXPERIENCE_LEVEL_META[experienceLevel].description}</span>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex flex-wrap items-center gap-1 p-1 rounded-xl bg-black border border-neutral-800 text-[11px] font-semibold">
-              {(Object.keys(EXPERIENCE_LEVEL_META) as ExperienceLevel[]).map(lvl => (
-                <button
-                  key={lvl}
-                  type="button"
-                  onClick={() => handleExperienceLevelChange(lvl)}
-                  className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
-                    experienceLevel === lvl ? 'bg-blue-600 text-white' : 'text-neutral-400 hover:text-white'
-                  }`}
-                >
-                  {EXPERIENCE_LEVEL_META[lvl].label}
-                </button>
-              ))}
+        {/* Adaptive Experience Level Selector Bar (Flag OFF = exact Demo Final; Flag ON = Study FISH/REG/NIT density) */}
+        {!marketStudyEnabled ? (
+          <>
+            <div className="bg-neutral-900/50 border border-neutral-800/80 rounded-2xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-xs">
+                <Sparkles className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                <span className="font-semibold text-white">Perfil de Estudio:</span>
+                <span className="text-neutral-400 hidden sm:inline">{EXPERIENCE_LEVEL_META[experienceLevel].description}</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-1 p-1 rounded-xl bg-neutral-950/90 border border-neutral-800 text-[11px] font-semibold">
+                  {(Object.keys(EXPERIENCE_LEVEL_META) as ExperienceLevel[]).map(lvl => (
+                    <button
+                      key={lvl}
+                      type="button"
+                      onClick={() => handleExperienceLevelChange(lvl)}
+                      className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
+                        experienceLevel === lvl ? 'bg-blue-600 text-white' : 'text-neutral-400 hover:text-white'
+                      }`}
+                    >
+                      {EXPERIENCE_LEVEL_META[lvl].label}
+                    </button>
+                  ))}
+                </div>
+                {(onboardingState.completed || onboardingState.dismissed) && (
+                  <button
+                    type="button"
+                    onClick={handleReopenOnboarding}
+                    className="px-2.5 py-1.5 rounded-xl bg-neutral-950/90 hover:bg-neutral-800 border border-neutral-800 text-[11px] font-semibold text-blue-300 cursor-pointer whitespace-nowrap transition-colors"
+                  >
+                    Guía 60s
+                  </button>
+                )}
+              </div>
             </div>
-            {(onboardingState.completed || onboardingState.dismissed) && (
-              <button
-                type="button"
-                onClick={handleReopenOnboarding}
-                className="px-2.5 py-1.5 rounded-xl bg-black hover:bg-neutral-900 border border-neutral-800 text-[11px] font-semibold text-blue-300 cursor-pointer whitespace-nowrap"
-              >
-                Guía 60s
-              </button>
+
+            {!onboardingState.completed && !onboardingState.dismissed && (
+              <Onboarding60sBanner
+                onSelectGoal={handleOnboardingGoal}
+                onDismiss={handleDismissOnboarding}
+              />
+            )}
+          </>
+        ) : (
+          <div className="space-y-3">
+            <div className="bg-neutral-900/60 border border-blue-500/30 rounded-2xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-xs">
+                <Sparkles className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                <span className="font-semibold text-white">Perfil Cognitivo:</span>
+                <span className="text-neutral-400 hidden sm:inline">
+                  {resolvedStudyState.config.description}
+                </span>
+                {resolvedStudyState.source === 'admin_override' && (
+                  <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-amber-300">
+                    Override Estudio
+                  </span>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-1 p-1 rounded-xl bg-neutral-950/90 border border-neutral-800 text-[11px] font-semibold">
+                  {STUDY_LEVELS.map(lvl => {
+                    const cfg = STUDY_LEVEL_CONFIGS[lvl];
+                    const isAct = resolvedStudyState.effectiveLevel === lvl;
+                    return (
+                      <button
+                        key={lvl}
+                        type="button"
+                        onClick={() => void handleStudyLevelSwitch(lvl)}
+                        className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
+                          isAct ? 'bg-blue-600 text-white' : 'text-neutral-400 hover:text-white'
+                        }`}
+                      >
+                        {cfg.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {!studyEnrollment ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowStudyOnboarding(true)}
+                    className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-[11px] font-bold text-white cursor-pointer whitespace-nowrap"
+                  >
+                    Unirme al Estudio 30D
+                  </button>
+                ) : studyEnrollment.status === 'active' ? (
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStudyFeedbackTab('survey');
+                        setShowStudyFeedbackModal(true);
+                      }}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-neutral-950 hover:bg-neutral-800 border border-neutral-800 text-[11px] font-semibold text-blue-300 cursor-pointer whitespace-nowrap"
+                    >
+                      <ClipboardCheck className="w-3.5 h-3.5" />
+                      <span>Feedback Estudio</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStudyFeedbackTab('privacy');
+                        setShowStudyFeedbackModal(true);
+                      }}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-neutral-950 hover:bg-neutral-800 border border-neutral-800 text-[11px] font-semibold text-neutral-300 hover:text-white cursor-pointer whitespace-nowrap"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Privacidad / Retiro</span>
+                    </button>
+                  </div>
+                ) : (
+                  <span className="text-[11px] font-mono text-neutral-400 px-2">
+                    Estado estudio: {studyEnrollment.status}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {dueMilestone && studyEnrollment?.status === 'active' && (
+              <div className="bg-blue-950/35 border border-blue-500/40 rounded-2xl px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2.5">
+                  <ClipboardCheck className="w-4 h-4 text-blue-400 shrink-0" />
+                  <span>
+                    <strong className="text-white">Check-in {dueMilestone.label}:</strong> Ayúdanos a calibrar el nivel{' '}
+                    <strong className="text-blue-300">{resolvedStudyState.effectiveLevel.toUpperCase()}</strong> en 60 segundos.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStudyFeedbackTab('survey');
+                    setShowStudyFeedbackModal(true);
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold cursor-pointer whitespace-nowrap"
+                >
+                  Responder Encuesta
+                </button>
+              </div>
             )}
           </div>
-        </div>
-
-        {/* Interactive 60s First-Run / Goal Setup Banner */}
-        {!onboardingState.completed && !onboardingState.dismissed && (
-          <Onboarding60sBanner
-            onSelectGoal={handleOnboardingGoal}
-            onDismiss={handleDismissOnboarding}
-          />
         )}
 
         {/* Auto-Learning Live Coach & Player Tracker Banner */}
@@ -1193,15 +1540,15 @@ function LabWorkspace() {
         {/* TAB 3: ENTRENADOR PRO 6-MAX EN VIVO + ARENA DCFR */}
         {activeTab === 'trainer' && (
           <div className="flex flex-col gap-5">
-            <div className="flex flex-wrap items-center justify-between gap-3 bg-neutral-950 border border-neutral-800 rounded-2xl px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-neutral-900/50 border border-neutral-800/80 rounded-2xl px-4 py-3">
               <div className="text-xs text-neutral-400">
                 Modo de Entrenamiento: <strong className="text-white">{trainerViewMode === 'live6max' ? 'Mesa 6-Max en Vivo (Allin School)' : 'Arena Lab Studio de Escenario'}</strong>
               </div>
-              <div className="flex items-center p-1 rounded-xl bg-black border border-neutral-800 text-xs font-semibold">
+              <div className="flex items-center p-1 rounded-xl bg-neutral-950/90 border border-neutral-800 text-xs font-semibold">
                 <button
                   type="button"
                   onClick={() => setTrainerViewMode('live6max')}
-                  className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                  className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
                     trainerViewMode === 'live6max' ? 'bg-blue-600 text-white' : 'text-neutral-400 hover:text-white'
                   }`}
                 >
@@ -1210,7 +1557,7 @@ function LabWorkspace() {
                 <button
                   type="button"
                   onClick={() => setTrainerViewMode('arena_dcfr')}
-                  className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                  className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
                     trainerViewMode === 'arena_dcfr' ? 'bg-blue-600 text-white' : 'text-neutral-400 hover:text-white'
                   }`}
                 >

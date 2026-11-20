@@ -10,7 +10,8 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Card, SUIT_COLORS, SUIT_SYMBOLS } from '../engine/cards';
+import { Card, SUIT_SYMBOLS } from '../engine/cards';
+import { PlayingCard, PlayingCardBack } from './PlayingCard';
 import {
   applyHeroDecision,
   buildSimulatedHandFingerprint,
@@ -60,23 +61,9 @@ interface TrainerModeProps {
 
 function CardMini({ card, hidden }: { card?: Card; hidden?: boolean }) {
   if (hidden || !card) {
-    return (
-      <div className="w-9 h-12 rounded-lg bg-neutral-900 border border-neutral-700 flex items-center justify-center text-[10px] font-mono text-neutral-500">
-        LS
-      </div>
-    );
+    return <PlayingCardBack size="xs" className="sm:w-11 sm:h-14" />;
   }
-  const color = SUIT_COLORS[card.suit];
-  return (
-    <div
-      className={`w-9 h-12 sm:w-11 sm:h-14 rounded-lg border ${color.bg} ${color.border} flex flex-col items-center justify-center font-mono font-bold shadow`}
-    >
-      <span className={`text-sm sm:text-base leading-none ${color.text}`}>{card.rank}</span>
-      <span className={`text-xs sm:text-sm leading-none mt-0.5 ${color.text}`}>
-        {SUIT_SYMBOLS[card.suit]}
-      </span>
-    </div>
-  );
+  return <PlayingCard card={card} size="sm" />;
 }
 
 export const TrainerMode: React.FC<TrainerModeProps> = ({
@@ -493,6 +480,28 @@ export const TrainerMode: React.FC<TrainerModeProps> = ({
                         </div>
                       );
                     })}
+                  </div>
+                )}
+
+                {handState.chronicle.length > 0 && (
+                  <div className="pt-2 border-t border-neutral-800/80 space-y-1.5">
+                    <div className="text-[11px] font-mono uppercase text-neutral-400">
+                      Resumen Completo Calle a Calle ({handState.chronicle.map(c => c.street.toUpperCase()).join(' → ')})
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {handState.chronicle.map((st, idx) => (
+                        <div
+                          key={idx}
+                          className={`px-2.5 py-1 rounded-lg border text-[11px] font-mono ${
+                            st.grade === 'optimal' || st.grade === 'acceptable'
+                              ? 'bg-emerald-950/30 border-emerald-500/30 text-emerald-200'
+                              : 'bg-amber-950/30 border-amber-500/30 text-amber-200'
+                          }`}
+                        >
+                          <strong className="uppercase">{st.street}:</strong> {st.heroAction} ({st.evLossBB === 0 ? '0 EV Loss' : `-${st.evLossBB} BB`})
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>

@@ -29,14 +29,14 @@ const CLAUSES_ES: ClauseItem[] = [
   { num: '04', title: 'Identidad Propia Sin Afiliación', body: 'Allin School, Lab Studio, TheTracker2 y Allin Studio Admin son marcas e implementaciones independientes sin respaldo, patrocinio ni vínculo con terceros operadores.' },
   { num: '05', title: 'Interoperabilidad Técnica de Archivos', body: 'La lectura de formatos .txt, .zip, .xml o .json en TheTracker2 ocurre estrictamente como interoperabilidad técnica para analizar archivos propios del estudiante fuera de línea.' },
   { num: '06', title: 'Uso Responsable Fuera de Mesas (No RTA)', body: 'El estudiante se compromete a utilizar Lab Studio exclusivamente como estudio post-sesión y nunca como asistencia automatizada en tiempo real durante partidas.' },
-  { num: '07', title: 'Protección de Datos (Ley 1581 de 2012)', body: 'El tratamiento de nombre, correo electrónico, UID y métricas académicas se rige por la Ley Estatutaria 1581 de 2012 (Colombia) y su decreto reglamentario.' },
-  { num: '08', title: 'Finalidad Legítima del Tratamiento', body: 'Los datos se emplean únicamente para autenticar acceso, aislar bases de datos por UID, sincronizar progreso SM-2 y habilitar beneficios según plan activo.' },
-  { num: '09', title: 'Aislamiento y Confidencialidad por UID', body: 'Cada historial importado, nota táctica y reporte de fugas está aislado por identificador único de usuario (UID) con control de acceso Fail-Closed.' },
-  { num: '10', title: 'Derechos ARCO / Habeas Data', body: 'Puedes conocer, actualizar, rectificar o solicitar la supresión de tu información personal mediante un ticket en el Centro de Soporte / Habeas Data.' },
+  { num: '07', title: 'Protección de Datos (Ley 1581/2012 & GDPR)', body: 'Responsable: ALLin Studio S.A.S. (DPO: privacidad@allinstudio.edu). El tratamiento cumple con la Ley Estatutaria 1581 de 2012 (Colombia) y el GDPR Art. 6(1)(a) bajo consentimiento explícito y revocable.' },
+  { num: '08', title: 'Finalidad, País/IP y Transferencias', body: 'Los datos se emplean para autenticar acceso, aislar bases por UID, sincronizar SM-2 y —si aceptas el estudio— medir usabilidad con hash irreversible de IP y país en infraestructura Google Cloud/Firebase.' },
+  { num: '09', title: 'Aislamiento por UID y Edad >= 18 Años', body: 'Cada historial está aislado por UID con control Fail-Closed. El acceso a estudios de mercado y métricas está restringido estrictamente a personas mayores de 18 años.' },
+  { num: '10', title: 'Derechos ARCO, Retiro y Retención', body: 'Eventos de estudio: 6 meses; feedback: 12 meses; consentimientos legales: 5 años. Puedes revocar y solicitar borrado en cascada (<=30 días) vía Soporte o en privacidad@allinstudio.edu.' },
   { num: '11', title: 'No Cesión Comercial de Datos', body: 'ALLin Studio no vende, alquila ni comercializa tus datos personales ni historiales de estudio con terceros anunciantes.' },
   { num: '12', title: 'Naturaleza Probabilística de Cálculos', body: 'Las simulaciones Monte Carlo, DCFR e ICM representan modelos matemáticos bajo supuestos configurables y no constituyen garantía de ganancia financiera.' },
-  { num: '13', title: 'Disponibilidad y Mantenimiento SaaS', body: 'Las funciones disponibles por nivel (Free, Pro, Elite) dependen de la configuración vigente gestionada de forma transparente en el catálogo de planes.' },
-  { num: '14', title: 'Jurisdicción y Vigencia', body: 'Este marco legal aplica de forma permanente sobre Allin School y Allin Studio Admin, sujeto a la normativa aplicable de la República de Colombia.' }
+  { num: '13', title: 'Seguridad y Notificación de Brechas (72h)', body: 'Aplicamos cifrado TLS, reglas Fail-Closed y notificaciones de incidentes de seguridad dentro de las 72 horas siguientes conforme al GDPR Art. 33.' },
+  { num: '14', title: 'Jurisdicción y Vigencia', body: 'Este marco legal aplica de forma permanente sobre Allin School y Allin Studio Admin, sujeto a la normativa aplicable de la República de Colombia y estándares GDPR.' }
 ];
 
 const CLAUSES_EN: ClauseItem[] = [
@@ -46,14 +46,14 @@ const CLAUSES_EN: ClauseItem[] = [
   { num: '04', title: 'Independent Brand & Zero Affiliation', body: 'Allin School, Lab Studio, TheTracker2, and Allin Studio Admin are proprietary software modules with no affiliation, endorsement, or partnership with external operators.' },
   { num: '05', title: 'Technical File Interoperability Disclaimer', body: 'Support for .txt, .zip, .xml, or .json files in TheTracker2 is provided solely for technical interoperability so students can review their own exported study records offline.' },
   { num: '06', title: 'Off-Table Study Only (No RTA Policy)', body: 'Users agree to utilize Lab Studio strictly for off-table study and post-session review, never as real-time assistance during active play.' },
-  { num: '07', title: 'Personal Data Protection (Law 1581 of 2012)', body: 'Processing of email, display name, UID, and study telemetry complies with Colombian Statutory Law 1581 of 2012 (Habeas Data).' },
-  { num: '08', title: 'Limited Purpose of Processing', body: 'Personal data is processed solely to authenticate access, isolate private study databases by UID, sync SM-2 progress, and enforce subscription entitlements.' },
-  { num: '09', title: 'Per-UID Storage Isolation & Security', body: 'Hand databases, training metrics, and diagnostic reports are strictly scoped per UID under fail-closed server and security-rule controls.' },
-  { num: '10', title: 'Data Subject Rights (Access & Erasure)', body: 'You may request access, correction, or deletion of your personal data at any time through the Support & Habeas Data ticket channel.' },
+  { num: '07', title: 'Personal Data Protection (Law 1581/2012 & GDPR)', body: 'Controller: ALLin Studio S.A.S. (DPO: privacidad@allinstudio.edu). Processing complies with Colombian Law 1581 of 2012 and GDPR Art. 6(1)(a) under explicit revocable consent.' },
+  { num: '08', title: 'Purpose, IP Hash & International Transfers', body: 'Data is processed to authenticate access, isolate private UID storage, sync SM-2 progress, and—when opted into the study—evaluate UX using one-way IP hashes on Google Cloud/Firebase.' },
+  { num: '09', title: 'Per-UID Isolation & Strict >= 18 Age Gate', body: 'Hand databases and diagnostics are isolated per UID under fail-closed controls. Market study enrollment is strictly restricted to adults aged 18+.' },
+  { num: '10', title: 'Data Subject Rights, Erasure & Retention', body: 'Study events: 6 months; feedback: 12 months; legal consents: 5 years. Withdraw or request cascading deletion (<=30 days) via Support or privacidad@allinstudio.edu.' },
   { num: '11', title: 'No Third-Party Data Monetization', body: 'ALLin Studio never sells, rents, or trades user study histories or personal profiles to third-party brokers.' },
   { num: '12', title: 'Mathematical Modeling Disclaimer', body: 'Monte Carlo equity, DCFR equilibrium, and ICM outputs are mathematical models subject to user-defined inputs and do not guarantee financial outcomes.' },
-  { num: '13', title: 'Tier Entitlements & Plan Catalog', body: 'Feature access across Free, Pro, and Elite tiers reflects the active SaaS configuration documented transparently inside the plan benefits view.' },
-  { num: '14', title: 'Governing Law & Acceptance', body: 'This 14-clause notice governs Allin School and Allin Studio Admin under applicable laws of the Republic of Colombia.' }
+  { num: '13', title: 'Security & 72h Breach Notification', body: 'Transport encryption, fail-closed security rules, and 72-hour breach notification commitments apply under GDPR Art. 33.' },
+  { num: '14', title: 'Governing Law & Acceptance', body: 'This 14-clause notice governs Allin School and Allin Studio Admin under Colombian law and international GDPR privacy standards.' }
 ];
 
 export const LegalNoticeModal: React.FC<LegalNoticeModalProps> = ({

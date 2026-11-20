@@ -9,7 +9,9 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import { Card, SUIT_COLORS, SUIT_SYMBOLS, cardToString, cardId, RANKS, SUITS } from '../engine/cards';
+import { Card, SUIT_SYMBOLS, cardToString, cardId, RANKS, SUITS } from '../engine/cards';
+import { PlayingCard } from './PlayingCard';
+import { useDeckTheme } from '../context/DeckThemeContext';
 import {
   Street,
   buildStreetGuidancePlan,
@@ -53,6 +55,7 @@ export const NextStreetGuide: React.FC<NextStreetGuideProps> = ({
   onAdvanceStreet,
   compact = false
 }) => {
+  const { deckTheme } = useDeckTheme();
   const [activeTab, setActiveTab] = useState<'plan' | 'runouts' | 'hands' | 'simulator'>('plan');
 
   const plan = useMemo(() => {
@@ -303,7 +306,7 @@ export const NextStreetGuide: React.FC<NextStreetGuideProps> = ({
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {candidates.map((cand, i) => {
                 const isSelected = selectedCandidate?.id === cand.card.id;
-                const suitColor = SUIT_COLORS[cand.card.suit];
+                const suitColor = deckTheme.suitText[cand.card.suit];
                 return (
                   <button
                     key={i}
@@ -318,7 +321,7 @@ export const NextStreetGuide: React.FC<NextStreetGuideProps> = ({
                       <div className="text-[10px] font-medium text-neutral-400">{cand.label}</div>
                       <div className="text-xs font-bold text-white flex items-center gap-1 font-mono">
                         <span>{cand.card.rank}</span>
-                        <span className={suitColor.text}>{SUIT_SYMBOLS[cand.card.suit]}</span>
+                        <span className={suitColor}>{SUIT_SYMBOLS[cand.card.suit]}</span>
                       </div>
                     </div>
                     {isSelected && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
@@ -333,12 +336,7 @@ export const NextStreetGuide: React.FC<NextStreetGuideProps> = ({
             <div className="bg-neutral-950 p-4 rounded-xl border border-emerald-900/40 space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-neutral-900">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-11 bg-neutral-900 border border-neutral-700 rounded flex flex-col items-center justify-center font-bold text-sm">
-                    <span>{runoutImpact.card.rank}</span>
-                    <span className={SUIT_COLORS[runoutImpact.card.suit].text}>
-                      {SUIT_SYMBOLS[runoutImpact.card.suit]}
-                    </span>
-                  </div>
+                  <PlayingCard card={runoutImpact.card} size="sm" />
                   <div>
                     <h4 className="font-bold text-white text-xs">{runoutImpact.categoryTitle}</h4>
                     <p className="text-[11px] text-neutral-400">{runoutImpact.favorsExplanation}</p>

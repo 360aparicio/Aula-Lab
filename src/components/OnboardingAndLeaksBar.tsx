@@ -38,7 +38,7 @@ export const Onboarding60sBanner: React.FC<Onboarding60sBannerProps> = ({
   return (
     <section
       aria-label="Configuración rápida en 60 segundos"
-      className="bg-neutral-950 border border-blue-500/40 rounded-2xl p-5 space-y-4"
+      className="bg-neutral-900/50 border border-blue-500/30 rounded-2xl p-5 space-y-4"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="space-y-1">
@@ -57,7 +57,7 @@ export const Onboarding60sBanner: React.FC<Onboarding60sBannerProps> = ({
           type="button"
           onClick={onDismiss}
           title="Ocultar guía rápida"
-          className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-900 cursor-pointer shrink-0"
+          className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 cursor-pointer shrink-0"
         >
           <X className="w-4 h-4" />
         </button>
@@ -67,7 +67,7 @@ export const Onboarding60sBanner: React.FC<Onboarding60sBannerProps> = ({
         <button
           type="button"
           onClick={() => onSelectGoal('learn_zero')}
-          className="p-4 rounded-xl bg-black border border-neutral-800 hover:border-emerald-500/70 text-left flex flex-col justify-between gap-3 transition-colors cursor-pointer group"
+          className="p-4 rounded-xl bg-neutral-950/80 border border-neutral-800/80 hover:border-emerald-500/60 text-left flex flex-col justify-between gap-3 transition-colors cursor-pointer group"
         >
           <div className="space-y-2">
             <div className="w-9 h-9 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center">
@@ -89,7 +89,7 @@ export const Onboarding60sBanner: React.FC<Onboarding60sBannerProps> = ({
         <button
           type="button"
           onClick={() => onSelectGoal('analyze_hands')}
-          className="p-4 rounded-xl bg-black border border-neutral-800 hover:border-blue-500/70 text-left flex flex-col justify-between gap-3 transition-colors cursor-pointer group"
+          className="p-4 rounded-xl bg-neutral-950/80 border border-neutral-800/80 hover:border-blue-500/60 text-left flex flex-col justify-between gap-3 transition-colors cursor-pointer group"
         >
           <div className="space-y-2">
             <div className="w-9 h-9 rounded-lg bg-blue-500/10 border border-blue-500/30 text-blue-400 flex items-center justify-center">
@@ -111,7 +111,7 @@ export const Onboarding60sBanner: React.FC<Onboarding60sBannerProps> = ({
         <button
           type="button"
           onClick={() => onSelectGoal('crush_stakes')}
-          className="p-4 rounded-xl bg-black border border-neutral-800 hover:border-amber-500/70 text-left flex flex-col justify-between gap-3 transition-colors cursor-pointer group"
+          className="p-4 rounded-xl bg-neutral-950/80 border border-neutral-800/80 hover:border-amber-500/60 text-left flex flex-col justify-between gap-3 transition-colors cursor-pointer group"
         >
           <div className="space-y-2">
             <div className="w-9 h-9 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center">
@@ -158,7 +158,7 @@ export const WeeklyLeaksRadarCard: React.FC<WeeklyLeaksRadarCardProps> = ({
   }, []);
 
   return (
-    <section className="bg-neutral-950 border border-neutral-800 rounded-2xl p-5 space-y-4">
+    <section className="bg-neutral-900/50 border border-neutral-800/80 rounded-2xl p-5 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="space-y-0.5">
           <div className="flex items-center gap-2 text-xs font-semibold text-amber-300">
@@ -176,7 +176,7 @@ export const WeeklyLeaksRadarCard: React.FC<WeeklyLeaksRadarCardProps> = ({
         <button
           type="button"
           onClick={refreshLeaks}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-black hover:bg-neutral-900 border border-neutral-800 text-xs font-semibold text-neutral-300 hover:text-white cursor-pointer whitespace-nowrap shrink-0"
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-neutral-950/80 hover:bg-neutral-800 border border-neutral-800 text-xs font-semibold text-neutral-300 hover:text-white cursor-pointer whitespace-nowrap shrink-0 transition-colors"
         >
           <RefreshCw className="w-3.5 h-3.5 text-blue-400" />
           <span>Actualizar Radar</span>
@@ -184,7 +184,7 @@ export const WeeklyLeaksRadarCard: React.FC<WeeklyLeaksRadarCardProps> = ({
       </div>
 
       {leaks.length === 0 ? (
-        <div className="p-4 rounded-xl bg-black border border-neutral-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="p-4 rounded-xl bg-neutral-950/80 border border-neutral-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
           <div className="space-y-1">
             <div className="font-semibold text-white">
               Aún no hay errores registrados esta semana en tu cuenta
@@ -196,7 +196,7 @@ export const WeeklyLeaksRadarCard: React.FC<WeeklyLeaksRadarCardProps> = ({
           <button
             type="button"
             onClick={() => onLaunchDrill('RANDOM', 'RANDOM')}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold cursor-pointer whitespace-nowrap shrink-0"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold cursor-pointer whitespace-nowrap shrink-0 transition-colors"
           >
             <Target className="w-3.5 h-3.5" />
             <span>Jugar Mano de Diagnóstico</span>
@@ -207,7 +207,7 @@ export const WeeklyLeaksRadarCard: React.FC<WeeklyLeaksRadarCardProps> = ({
           {leaks.map((item, idx) => (
             <div
               key={item.id}
-              className="p-4 rounded-xl bg-black border border-neutral-800 flex flex-col justify-between gap-3"
+              className="p-4 rounded-xl bg-neutral-950/80 border border-neutral-800/80 flex flex-col justify-between gap-3"
             >
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-2 text-[11px] font-mono tabular-nums">

@@ -27,6 +27,13 @@ import { LearnerService, type LearnerMistakeRecord } from '../engine/learner';
 import { AutoLearningEngine } from '../engine/autoLearningEngine';
 import { loadTrainerStats, saveTrainerStats } from '../trainer/trainerState';
 import { readScopedItem, writeScopedItem } from './userStorage';
+import { cryptoRandomInt } from './random';
+import {
+  isValidDeckThemeId,
+  loadDeckThemePreference,
+  saveDeckThemePreference,
+  type DeckThemeId
+} from './deckTheme';
 import {
   ACADEMY_STATS_STORAGE_KEY,
   CAREER_ROADMAP_STORAGE_KEY,
@@ -81,6 +88,10 @@ export interface UserProfileDoc {
   roadmapDoneIds: string[];
   categoryStats: Record<string, { attempts: number; correct: number }>;
   evaluationStats: SavedEvaluationSummary;
+  studyLevel?: 'fish' | 'reg' | 'nit';
+  studyLevelSource?: 'self_selected' | 'cohort_assignment' | 'admin_override';
+  marketStudyEnrolled?: boolean;
+  deckTheme?: DeckThemeId;
   createdAt?: unknown;
   updatedAt?: unknown;
 }
@@ -338,6 +349,18 @@ export function mapSnapshotToUserProfile(id: string, data: Record<string, unknow
       ...(evalRaw.liveChallengeSummary ? { liveChallengeSummary: evalRaw.liveChallengeSummary } : {}),
       ...(evalRaw.pt4Summary ? { pt4Summary: evalRaw.pt4Summary } : {})
     },
+    ...(data.studyLevel === 'fish' || data.studyLevel === 'reg' || data.studyLevel === 'nit'
+      ? { studyLevel: data.studyLevel }
+      : {}),
+    ...(data.studyLevelSource === 'self_selected' ||
+    data.studyLevelSource === 'cohort_assignment' ||
+    data.studyLevelSource === 'admin_override'
+      ? { studyLevelSource: data.studyLevelSource }
+      : {}),
+    ...(typeof data.marketStudyEnrolled === 'boolean'
+      ? { marketStudyEnrolled: data.marketStudyEnrolled }
+      : {}),
+    ...(isValidDeckThemeId(data.deckTheme) ? { deckTheme: data.deckTheme } : {}),
     createdAt: data.createdAt,
     updatedAt: data.updatedAt
   };
@@ -435,6 +458,7 @@ export async function syncUserProfileToCloud(user: User): Promise<UserProfileDoc
         roadmapDoneIds,
         categoryStats,
         evaluationStats,
+        deckTheme: loadDeckThemePreference(),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       };
@@ -501,6 +525,7 @@ export async function syncUserProfileToCloud(user: User): Promise<UserProfileDoc
           roadmapDoneIds,
           categoryStats,
           evaluationStats,
+          deckTheme: loadDeckThemePreference(),
           updatedAt: serverTimestamp()
         });
       } else {
@@ -514,6 +539,7 @@ export async function syncUserProfileToCloud(user: User): Promise<UserProfileDoc
           roadmapDoneIds,
           categoryStats,
           evaluationStats,
+          deckTheme: loadDeckThemePreference(),
           updatedAt: serverTimestamp()
         });
       }
@@ -771,12 +797,15 @@ export async function hydrateLocalStateFromCloud(user: User): Promise<UserProfil
     }
   }
 
-  // 5. AutoLearningEngine Summary
+  // 5. AutoLearningEngine Summary + Deck Theme Preference
   AutoLearningEngine.getInstance().hydrateSummaryFromCloud({
     totalDecisions: profile.totalDecisions,
     totalMistakes: profile.totalMistakes,
     masteryScore: profile.masteryScore
   });
+  if (profile.deckTheme && isValidDeckThemeId(profile.deckTheme)) {
+    saveDeckThemePreference(profile.deckTheme);
+  }
 
   // 6. SM-2 Items Subcollection
   try {
@@ -878,7 +907,7 @@ export async function recordAdminAuditLog(
 ): Promise<void> {
   const actor = auth.currentUser;
   if (!actor) return;
-  const logId = sanitizeDocId(`log-${Date.now()}-${Math.floor(Math.random() * 10000)}`);
+  const logId = sanitizeDocId(`log-${Date.now()}-${cryptoRandomInt(10000)}`);
   const logPath = `adminAuditLogs/${logId}`;
   try {
     await setDoc(doc(db, 'adminAuditLogs', logId), {
@@ -1428,7 +1457,7 @@ export async function submitStudentSupportTicket(
     throw new Error('Describe tu consulta con al menos 4 caracteres.');
   }
 
-  const ticketId = sanitizeDocId(`tkt-${Date.now()}-${Math.floor(Math.random() * 10000)}`);
+  const ticketId = sanitizeDocId(`tkt-${Date.now()}-${cryptoRandomInt(10000)}`);
   const ticketPath = `supportTickets/${ticketId}`;
   try {
     await setDoc(doc(db, 'supportTickets', ticketId), {

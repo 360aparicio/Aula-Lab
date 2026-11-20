@@ -7,7 +7,7 @@
  * con cálculo exacto de la curva del olvido para garantizar que los spots difíciles se dominen.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Brain,
   RotateCcw,
@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 import { AutoLearningEngine, calculateSM2, HandHistoryRecord } from '../engine/autoLearningEngine';
 import { SM2_UPDATE_EVENT } from '../engine/spacedRepetition';
-import { cryptoRandomInt } from '../lib/random';
+import { cryptoRandomInt, fisherYatesShuffle } from '../lib/random';
 import { readScopedItem, writeScopedItem } from '../lib/userStorage';
 
 export interface SM2Flashcard {
@@ -144,14 +144,50 @@ export const CustomFlashcardManager: React.FC = () => {
   }, []);
 
   // Filter cards
-  const dueCards = cards.filter(c => c.nextReviewDate <= Date.now());
-  const masteredCards = cards.filter(c => c.repetitions >= 3 && c.easeFactor >= 2.4);
+  const dueCards = useMemo(() => cards.filter(c => c.nextReviewDate <= Date.now()), [cards]);
+  const masteredCards = useMemo(() => cards.filter(c => c.repetitions >= 3 && c.easeFactor >= 2.4), [cards]);
   const averageEF = (
     cards.reduce((acc, c) => acc + c.easeFactor, 0) / Math.max(1, cards.length)
   ).toFixed(2);
 
-  // Active card pool for review (preserve genuine empty due state!)
-  const activeDeck = activeTab === 'due' ? dueCards : cards;
+  // Fisher-Yates shuffled ID order per session & tab switch so cards never appear in static order
+  const [shuffledOrder, setShuffledOrder] = useState<string[]>(() =>
+    fisherYatesShuffle(cards.map(c => c.id))
+  );
+
+  const reshuffleDeckOrder = (sourceCards: SM2Flashcard[]) => {
+    setShuffledOrder(fisherYatesShuffle(sourceCards.map(c => c.id)));
+  };
+
+  useEffect(() => {
+    setShuffledOrder(prev => {
+      const existing = new Set(prev);
+      const validIds = new Set(cards.map(c => c.id));
+      const kept = prev.filter(id => validIds.has(id));
+      const added = cards.filter(c => !existing.has(c.id)).map(c => c.id);
+      if (added.length === 0 && kept.length === prev.length) return prev;
+      return [...fisherYatesShuffle(added), ...kept];
+    });
+  }, [cards]);
+
+  // Active card pool ordered by Fisher-Yates permutation
+  const activeDeck = useMemo(() => {
+    const pool = activeTab === 'due' ? dueCards : cards;
+    const byId = new Map(pool.map(c => [c.id, c]));
+    const ordered: SM2Flashcard[] = [];
+    for (const id of shuffledOrder) {
+      const card = byId.get(id);
+      if (card) {
+        ordered.push(card);
+        byId.delete(id);
+      }
+    }
+    if (byId.size > 0) {
+      ordered.push(...fisherYatesShuffle(Array.from(byId.values())));
+    }
+    return ordered;
+  }, [activeTab, dueCards, cards, shuffledOrder]);
+
   const safeIndex = activeDeck.length > 0 ? Math.min(activeReviewIndex, activeDeck.length - 1) : 0;
   const currentCard = activeDeck[safeIndex] || null;
 
@@ -186,7 +222,12 @@ export const CustomFlashcardManager: React.FC = () => {
     const remainingCount = activeTab === 'due'
       ? updated.filter(c => c.nextReviewDate <= Date.now()).length
       : updated.length;
-    setActiveReviewIndex(prev => (remainingCount <= 0 ? 0 : prev >= remainingCount ? 0 : prev));
+    if (remainingCount <= 0 || activeReviewIndex + 1 >= remainingCount) {
+      reshuffleDeckOrder(updated);
+      setActiveReviewIndex(0);
+    } else {
+      setActiveReviewIndex(prev => prev + 1);
+    }
   };
 
   const handleCreateCard = (e: React.FormEvent) => {
@@ -220,39 +261,39 @@ export const CustomFlashcardManager: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-7">
       {/* Top Header Card con Métricas SM-2 */}
-      <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-blue-500/10 rounded-xl border border-blue-500/30 text-blue-400">
+      <div className="bg-neutral-900/55 border border-neutral-800/80 rounded-2xl p-6 sm:p-7 shadow-sm shadow-black/30 ring-1 ring-inset ring-white/[0.03] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5">
+        <div className="flex items-start sm:items-center gap-3.5">
+          <div className="p-2.5 bg-blue-500/10 rounded-xl border border-blue-500/30 text-blue-400 shrink-0">
             <Brain className="w-6 h-6" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-white flex items-center gap-2">
-              Gestor de Flashcards & Repetición Espaciada SM-2
-              <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-950 border border-blue-800 text-blue-300 font-mono">
-                Auto-Aprendizaje Autosuficiente
+            <h2 className="text-xl font-bold tracking-tight text-white flex items-center gap-2 flex-wrap">
+              <span>Flashcards &amp; Repetición Espaciada SM-2</span>
+              <span className="text-xs text-blue-400 font-mono font-normal">
+                · Barajado Fisher-Yates
               </span>
             </h2>
-            <p className="text-xs text-neutral-400 mt-0.5">
+            <p className="text-xs sm:text-sm text-neutral-400 mt-1 leading-relaxed">
               El algoritmo SuperMemo SM-2 reprograma cada spot según tu facilidad de recuerdo, eliminando la curva del olvido.
             </p>
           </div>
         </div>
 
         <div className="flex items-center flex-wrap gap-2">
-          <div className="px-3 py-1.5 bg-neutral-950 rounded-xl border border-neutral-800 text-xs font-mono">
+          <div className="px-3 py-1.5 bg-neutral-950/80 rounded-xl border border-neutral-800 text-xs font-mono tabular-nums">
             <span className="text-neutral-400">Pendientes Hoy: </span>
             <strong className="text-blue-400 font-bold">{dueCards.length}</strong> / {cards.length}
           </div>
-          <div className="px-3 py-1.5 bg-neutral-950 rounded-xl border border-neutral-800 text-xs font-mono">
+          <div className="px-3 py-1.5 bg-neutral-950/80 rounded-xl border border-neutral-800 text-xs font-mono tabular-nums">
             <span className="text-neutral-400">Neutralizadas: </span>
             <strong className="text-emerald-400 font-bold">{masteredCards.length}</strong>
           </div>
           <button
             type="button"
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold shadow-md transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Crear Flashcard</span>
@@ -261,14 +302,14 @@ export const CustomFlashcardManager: React.FC = () => {
       </div>
 
       {/* Selector de Subpestañas */}
-      <div className="flex items-center gap-2 border-b border-neutral-800 pb-2">
+      <div className="flex items-center gap-2 border-b border-neutral-800/80 pb-3">
         <button
           type="button"
-          onClick={() => { setActiveTab('due'); setActiveReviewIndex(0); setIsFlipped(false); }}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+          onClick={() => { setActiveTab('due'); reshuffleDeckOrder(cards); setActiveReviewIndex(0); setIsFlipped(false); }}
+          className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors flex items-center gap-2 cursor-pointer whitespace-nowrap ${
             activeTab === 'due'
-              ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-              : 'bg-neutral-900 text-neutral-400 hover:text-white'
+              ? 'bg-blue-600 text-white'
+              : 'bg-neutral-900/60 text-neutral-400 hover:text-white'
           }`}
         >
           <Target className="w-3.5 h-3.5" />
@@ -277,11 +318,11 @@ export const CustomFlashcardManager: React.FC = () => {
 
         <button
           type="button"
-          onClick={() => { setActiveTab('all'); setActiveReviewIndex(0); setIsFlipped(false); }}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+          onClick={() => { setActiveTab('all'); reshuffleDeckOrder(cards); setActiveReviewIndex(0); setIsFlipped(false); }}
+          className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors flex items-center gap-2 cursor-pointer whitespace-nowrap ${
             activeTab === 'all'
-              ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-              : 'bg-neutral-900 text-neutral-400 hover:text-white'
+              ? 'bg-blue-600 text-white'
+              : 'bg-neutral-900/60 text-neutral-400 hover:text-white'
           }`}
         >
           <Layers className="w-3.5 h-3.5" />
@@ -291,10 +332,10 @@ export const CustomFlashcardManager: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveTab('history')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+          className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors flex items-center gap-2 cursor-pointer whitespace-nowrap ${
             activeTab === 'history'
-              ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-              : 'bg-neutral-900 text-neutral-400 hover:text-white'
+              ? 'bg-blue-600 text-white'
+              : 'bg-neutral-900/60 text-neutral-400 hover:text-white'
           }`}
         >
           <History className="w-3.5 h-3.5" />
@@ -304,9 +345,9 @@ export const CustomFlashcardManager: React.FC = () => {
 
       {/* Vista de Manos Recopiladas */}
       {activeTab === 'history' ? (
-        <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+        <div className="bg-neutral-900/55 border border-neutral-800/80 rounded-2xl p-6 sm:p-7 shadow-sm shadow-black/30 ring-1 ring-inset ring-white/[0.03] space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-bold tracking-tight text-white flex items-center gap-2">
               <History className="w-4 h-4 text-blue-400" />
               Feed de Manos Auto-Recopiladas por la IA
             </h3>
@@ -384,18 +425,18 @@ export const CustomFlashcardManager: React.FC = () => {
         /* Viewport de Repaso SM-2 */
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Main Flashcard Interactive Area */}
-          <div className="lg:col-span-2 space-y-4">
+          <div className="lg:col-span-2 space-y-5">
             {currentCard ? (
-              <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-6 shadow-2xl relative">
-                {/* Badge Superior */}
+              <div className="bg-neutral-900/55 border border-neutral-800/80 rounded-2xl p-6 sm:p-7 shadow-sm shadow-black/30 ring-1 ring-inset ring-white/[0.03] relative">
+                {/* Metadata Superior */}
                 <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-950 border border-blue-800 text-blue-300 font-mono font-semibold">
+                  <div className="flex items-center gap-2 text-xs font-mono">
+                    <span className="text-blue-400 font-semibold">
                       {currentCard.category}
                     </span>
                     {currentCard.isAutoCaptured && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-950 border border-amber-800 text-amber-300 font-mono">
-                        Auto-Capturada de tu Juego
+                      <span className="text-[11px] text-amber-400">
+                        · Auto-Capturada
                       </span>
                     )}
                   </div>
@@ -474,25 +515,25 @@ export const CustomFlashcardManager: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setIsFlipped(true)}
-                      className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-500/25 transition-all flex items-center gap-2 cursor-pointer"
+                      className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-semibold shadow-sm shadow-black/30 transition-colors flex items-center gap-2 cursor-pointer"
                     >
                       <Sparkles className="w-4 h-4" />
-                      <span>Ver Respuesta & Evaluar con SM-2</span>
+                      <span>Ver Respuesta &amp; Evaluar con SM-2</span>
                     </button>
                   </div>
                 )}
               </div>
             ) : (
-              <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-8 text-center space-y-3">
+              <div className="bg-neutral-900/55 border border-neutral-800/80 rounded-2xl p-10 shadow-sm shadow-black/30 ring-1 ring-inset ring-white/[0.03] text-center space-y-4">
                 <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto" />
-                <h3 className="text-base font-bold text-white">¡No tienes tarjetas pendientes de repaso para hoy!</h3>
-                <p className="text-xs text-neutral-400 max-w-md mx-auto">
+                <h3 className="text-base font-bold tracking-tight text-white">¡No tienes tarjetas pendientes de repaso para hoy!</h3>
+                <p className="text-xs sm:text-sm text-neutral-400 max-w-md mx-auto leading-relaxed">
                   Has completado la curva de repetición del algoritmo SuperMemo SM-2. El sistema volverá a agendar tarjetas cuando la memoria comience a decaer.
                 </p>
                 <button
                   type="button"
                   onClick={() => setActiveTab('all')}
-                  className="px-4 py-2 bg-neutral-900 border border-neutral-800 text-xs font-bold text-white rounded-xl hover:bg-neutral-800 transition-all cursor-pointer"
+                  className="px-4 py-2 bg-neutral-900 border border-neutral-800 text-xs font-semibold text-white rounded-xl hover:bg-neutral-800 transition-colors cursor-pointer"
                 >
                   Ver Todas las Tarjetas ({cards.length})
                 </button>
@@ -501,8 +542,8 @@ export const CustomFlashcardManager: React.FC = () => {
           </div>
 
           {/* Panel Lateral: Parámetros del Algoritmo SM-2 y Guía Directa */}
-          <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-5 space-y-4">
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+          <div className="bg-neutral-900/55 border border-neutral-800/80 rounded-2xl p-6 shadow-sm shadow-black/30 ring-1 ring-inset ring-white/[0.03] space-y-4">
+            <h3 className="text-sm font-bold tracking-tight text-white flex items-center gap-2">
               <Zap className="w-4 h-4 text-blue-400" />
               ¿Por qué SM-2 hace la app autosuficiente?
             </h3>

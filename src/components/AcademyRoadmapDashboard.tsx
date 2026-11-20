@@ -15,7 +15,8 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import * as d3 from 'd3';
-import { Card, cardId, SUIT_COLORS, SUIT_SYMBOLS } from '../engine/cards';
+import { Card, SUIT_SYMBOLS } from '../engine/cards';
+import { PlayingCard, PlayingCardBack } from './PlayingCard';
 import { AutoLearningEngine } from '../engine/autoLearningEngine';
 import { SolverMetaUpdater } from '../engine/solverMetaUpdater';
 import {
@@ -29,13 +30,22 @@ import { ProgressDashboard } from './ProgressDashboard';
 import { EvaluationModule } from './EvaluationModule';
 import {
   ACADEMY_SCENARIO_BANK,
-  getNextAcademyScenario,
+  buildShuffledAcademySessionQueue,
+  markAcademyScenarioSeen,
   type AcademyCategory,
   type QuizScenario
 } from '../engine/academySpots';
+import {
+  initAcademyHandSession,
+  submitAcademyStreetDecision,
+  advanceAcademyHandStreet,
+  getNextAcademyStage,
+  isFoldActionCode,
+  type AcademyHandSession
+} from '../engine/academyRunout';
 import { auth } from '../lib/firebase';
 import { readScopedItem, writeScopedItem } from '../lib/userStorage';
-import { cryptoShuffle } from '../lib/random';
+import { fisherYatesShuffle } from '../lib/random';
 import { loadEvaluationStats } from './EvaluationModule';
 import {
   GraduationCap,
@@ -54,24 +64,26 @@ import {
   Clock,
   Layers,
   History,
-  ClipboardCheck
+  ClipboardCheck,
+  Map as MapIcon,
+  Lightbulb
 } from 'lucide-react';
 
 export type { AcademyCategory } from '../engine/academySpots';
 
-const CATEGORIES: { id: AcademyCategory; label: string; icon: string }[] = [
-  { id: 'dry_flop', label: 'Flops Secos (Dry)', icon: '🏜️' },
-  { id: 'wet_flop', label: 'Flops Coordinados (Wet)', icon: '🌊' },
-  { id: 'monotone_flop', label: 'Flops Monótonos', icon: '🎨' },
-  { id: 'paired_flop', label: 'Flops Emparejados', icon: '♊' },
-  { id: 'three_bet_pot', label: 'Botes 3-Bet', icon: '🔥' },
-  { id: 'squeeze', label: 'Squeeze Spots', icon: '💥' },
-  { id: 'rol', label: 'ROL (Limpers)', icon: '🎣' },
-  { id: 'open_raise', label: 'Open Raise (RFI)', icon: '🚀' },
-  { id: 'four_bet', label: '4-Bet Pots', icon: '⚡' },
-  { id: 'limp_reraise', label: 'Limp Re-Raise', icon: '🪤' },
-  { id: 'blind_defense', label: 'Defensa Ciegas', icon: '🛡️' },
-  { id: 'bluff_catch', label: 'Bluff Catching', icon: '🎯' }
+const CATEGORIES: { id: AcademyCategory; label: string }[] = [
+  { id: 'dry_flop', label: 'Flops Secos (Dry)' },
+  { id: 'wet_flop', label: 'Flops Coordinados (Wet)' },
+  { id: 'monotone_flop', label: 'Flops Monótonos' },
+  { id: 'paired_flop', label: 'Flops Emparejados' },
+  { id: 'three_bet_pot', label: 'Botes 3-Bet' },
+  { id: 'squeeze', label: 'Squeeze Spots' },
+  { id: 'rol', label: 'ROL (Limpers)' },
+  { id: 'open_raise', label: 'Open Raise (RFI)' },
+  { id: 'four_bet', label: '4-Bet Pots' },
+  { id: 'limp_reraise', label: 'Limp Re-Raise' },
+  { id: 'blind_defense', label: 'Defensa Ciegas' },
+  { id: 'bluff_catch', label: 'Bluff Catching' }
 ];
 
 export const ACADEMY_STATS_STORAGE_KEY = 'gto_academy_stats';
@@ -145,9 +157,29 @@ export const INITIAL_ROADMAP: RoadmapPhase[] = [
 export const AcademyRoadmapDashboard: React.FC = () => {
   const [activeSubTab, setActiveSubTab] = useState<'sim' | 'evaluation' | 'dashboard' | 'roadmap' | 'flashcards' | 'concepts'>('sim');
   const [activeCategory, setActiveCategory] = useState<AcademyCategory>('dry_flop');
-  const [currentScenario, setCurrentScenario] = useState<QuizScenario>(() => getNextAcademyScenario('dry_flop'));
-  const [selectedOptionIndex, setSelectedOptionIndex] = useState<number | null>(null);
-  const [hasAnswered, setHasAnswered] = useState(false);
+
+  // Pre-barajado Fisher-Yates por categoría antes de renderizar la sesión (0 repeticiones en la sesión)
+  const categoryQueuesRef = useRef<Partial<Record<AcademyCategory, QuizScenario[]>>>({});
+  const drawNextFromShuffledQueue = (cat: AcademyCategory, excludeId?: string): QuizScenario => {
+    let queue = categoryQueuesRef.current[cat];
+    if (!queue || queue.length === 0) {
+      queue = buildShuffledAcademySessionQueue(cat, excludeId);
+      categoryQueuesRef.current[cat] = queue;
+    }
+    const next = queue.shift() || buildShuffledAcademySessionQueue(cat, excludeId)[0];
+    if (next) {
+      markAcademyScenarioSeen(next.id);
+    }
+    return next;
+  };
+
+  const [handSession, setHandSession] = useState<AcademyHandSession>(() =>
+    initAcademyHandSession(drawNextFromShuffledQueue('dry_flop'))
+  );
+  const currentScenario = handSession.scenario;
+  const currentStep = handSession.currentStep;
+  const selectedOptionIndex = handSession.selectedOptionIdx;
+  const hasAnswered = handSession.currentStepAnswered;
   const [cardSavedToast, setCardSavedToast] = useState(false);
 
   // Infinite Procedural Quiz + 30s Timer + ELO progression + Shuffled Category Cycle
@@ -282,13 +314,12 @@ export const AcademyRoadmapDashboard: React.FC = () => {
     } catch (e) {}
   }, [roadmap]);
 
-  // Handle category switch (always deals a fresh scenario distinct from current)
+  // Handle category switch (consumes pre-shuffled Fisher-Yates queue without repeats)
   const handleSelectCategory = (cat: AcademyCategory) => {
     setActiveCategory(cat);
-    setCurrentScenario(getNextAcademyScenario(cat, currentScenario.id));
-    setSelectedOptionIndex(null);
+    const nextScenario = drawNextFromShuffledQueue(cat, currentScenario.id);
+    setHandSession(initAcademyHandSession(nextScenario));
     setLastRatedGrade(null);
-    setHasAnswered(false);
     setCardSavedToast(false);
     setConceptRatedToast(null);
     setQuizSecondsLeft(30);
@@ -303,35 +334,50 @@ export const AcademyRoadmapDashboard: React.FC = () => {
 
   // 30-second countdown timer for Infinite Procedural Quiz
   useEffect(() => {
-    if (!isInfiniteQuizMode || activeSubTab !== 'sim' || hasAnswered) return;
+    if (
+      !isInfiniteQuizMode ||
+      activeSubTab !== 'sim' ||
+      hasAnswered ||
+      handSession.stage === 'showdown' ||
+      handSession.stage === 'folded'
+    ) {
+      return;
+    }
     if (quizSecondsLeft <= 0) {
       // Timeout counts as mistake and syncs to SM-2
-      setHasAnswered(true);
+      setHandSession(prev => ({
+        ...prev,
+        currentStepAnswered: true,
+        selectedOptionIdx: -1,
+        lastChosenAction: 'FOLD'
+      }));
       setQuizStreak(0);
       setQuizElo(prev => Math.max(800, prev - 15));
-      setCategoryStats(prev => {
-        const current = prev[currentScenario.category] || { attempts: 0, correct: 0 };
-        return {
-          ...prev,
-          [currentScenario.category]: {
-            attempts: current.attempts + 1,
-            correct: current.correct
-          }
-        };
-      });
+      if (handSession.streetHistory.length === 0) {
+        setCategoryStats(prev => {
+          const current = prev[currentScenario.category] || { attempts: 0, correct: 0 };
+          return {
+            ...prev,
+            [currentScenario.category]: {
+              attempts: current.attempts + 1,
+              correct: current.correct
+            }
+          };
+        });
+      }
       AutoLearningEngine.getInstance().collectHand({
         heroPos: currentScenario.heroPos,
         villainPos: currentScenario.villainPos,
         heroCards: `${currentScenario.heroCards[0].rank}${SUIT_SYMBOLS[currentScenario.heroCards[0].suit]} ${currentScenario.heroCards[1].rank}${SUIT_SYMBOLS[currentScenario.heroCards[1].suit]}`,
-        board: currentScenario.board.map(c => `${c.rank}${SUIT_SYMBOLS[c.suit]}`).join(' '),
-        street: currentScenario.board.length === 0 ? 'preflop' : currentScenario.board.length === 3 ? 'flop' : currentScenario.board.length === 4 ? 'turn' : 'river',
+        board: currentStep.visibleBoard.map(c => `${c.rank}${SUIT_SYMBOLS[c.suit]}`).join(' '),
+        street: currentStep.stage,
         category: currentScenario.categoryName,
-        potBB: currentScenario.potBB,
+        potBB: currentStep.potBB,
         chosenAction: 'Tiempo Agotado (30s)',
-        optimalAction: `${currentScenario.correctAction} (Sizing: ${currentScenario.correctSizing || 'Estándar'})`,
+        optimalAction: `${currentStep.correctAction} (Sizing: ${currentStep.correctSizing || 'Estándar'})`,
         evLossPct: 6.5,
         isMistake: true,
-        keyTakeaway: currentScenario.explanationDummies
+        keyTakeaway: currentStep.explanationDummies
       });
       return;
     }
@@ -340,17 +386,20 @@ export const AcademyRoadmapDashboard: React.FC = () => {
       setQuizSecondsLeft(prev => prev - 1);
     }, 1000);
     return () => clearTimeout(timer);
-  }, [isInfiniteQuizMode, activeSubTab, hasAnswered, quizSecondsLeft, currentScenario]);
+  }, [isInfiniteQuizMode, activeSubTab, hasAnswered, quizSecondsLeft, currentScenario, currentStep, handSession.stage, handSession.streetHistory.length]);
 
-  // Answer handle with AutoLearningEngine recording & Auto-Capture of Mistakes into SM-2
+  // Answer handle for current street (Preflop/Flop/Turn/River) with AutoLearningEngine recording
   const handleSelectOption = (idx: number) => {
-    if (hasAnswered) return;
-    setSelectedOptionIndex(idx);
-    setHasAnswered(true);
+    if (hasAnswered || handSession.stage === 'showdown' || handSession.stage === 'folded') return;
 
-    const chosen = currentScenario.options[idx];
+    const chosen = currentStep.options[idx];
+    if (!chosen) return;
+    const nextSession = submitAcademyStreetDecision(handSession, idx);
+    setHandSession(nextSession);
+
     const isCorrect = chosen.isCorrect;
     const isMistake = chosen.evLossPct > 3.0;
+    const isPrimaryStreet = handSession.streetHistory.length === 0;
 
     if (isInfiniteQuizMode) {
       if (isCorrect) {
@@ -362,67 +411,72 @@ export const AcademyRoadmapDashboard: React.FC = () => {
       }
     }
 
-    const streetName = currentScenario.board.length === 0 ? 'preflop' : currentScenario.board.length === 3 ? 'flop' : currentScenario.board.length === 4 ? 'turn' : 'river';
+    const streetName = currentStep.stage;
 
-    // Report to collective learner server
     void SolverMetaUpdater.getInstance().reportUserDecision({
       texture: currentScenario.categoryName,
       street: streetName,
       chosenAction: chosen.label,
-      bestAction: currentScenario.correctAction,
+      bestAction: currentStep.correctAction,
       evLossPct: chosen.evLossPct
     });
 
-    // Si es un error o desviación, la auto-capturamos directamente en el sistema SM-2
     if (isMistake) {
       AutoLearningEngine.getInstance().collectHand({
         heroPos: currentScenario.heroPos,
         villainPos: currentScenario.villainPos,
         heroCards: `${currentScenario.heroCards[0].rank}${SUIT_SYMBOLS[currentScenario.heroCards[0].suit]} ${currentScenario.heroCards[1].rank}${SUIT_SYMBOLS[currentScenario.heroCards[1].suit]}`,
-        board: currentScenario.board.map(c => `${c.rank}${SUIT_SYMBOLS[c.suit]}`).join(' '),
+        board: currentStep.visibleBoard.map(c => `${c.rank}${SUIT_SYMBOLS[c.suit]}`).join(' '),
         street: streetName,
         category: currentScenario.categoryName,
-        potBB: currentScenario.potBB,
+        potBB: currentStep.potBB,
         chosenAction: chosen.label,
-        optimalAction: `${currentScenario.correctAction} (Sizing: ${currentScenario.correctSizing || 'Estándar'})`,
+        optimalAction: `${currentStep.correctAction} (Sizing: ${currentStep.correctSizing || 'Estándar'})`,
         evLossPct: chosen.evLossPct,
         isMistake: true,
-        keyTakeaway: currentScenario.explanationDummies
+        keyTakeaway: currentStep.explanationDummies
       });
     } else {
-      // Record regular decision
       AutoLearningEngine.getInstance().recordDecision({
         street: streetName,
         category: currentScenario.categoryName,
         heroCards: `${currentScenario.heroCards[0].rank}${currentScenario.heroCards[0].suit} ${currentScenario.heroCards[1].rank}${currentScenario.heroCards[1].suit}`,
-        board: currentScenario.board.map(c => `${c.rank}${c.suit}`).join(' '),
+        board: currentStep.visibleBoard.map(c => `${c.rank}${c.suit}`).join(' '),
         chosenAction: chosen.label,
-        optimalAction: currentScenario.correctAction,
+        optimalAction: currentStep.correctAction,
         evLossPct: chosen.evLossPct,
         isMistake: false,
-        potBB: currentScenario.potBB
+        potBB: currentStep.potBB
       });
     }
 
-    setCategoryStats(prev => {
-      const current = prev[currentScenario.category] || { attempts: 0, correct: 0 };
-      return {
-        ...prev,
-        [currentScenario.category]: {
-          attempts: current.attempts + 1,
-          correct: current.correct + (isCorrect ? 1 : 0)
-        }
-      };
-    });
+    if (isPrimaryStreet) {
+      setCategoryStats(prev => {
+        const current = prev[currentScenario.category] || { attempts: 0, correct: 0 };
+        return {
+          ...prev,
+          [currentScenario.category]: {
+            attempts: current.attempts + 1,
+            correct: current.correct + (isCorrect ? 1 : 0)
+          }
+        };
+      });
+    }
   };
 
-  // Next Hand generator: guarantees advancing to a genuinely different category/hand/board spot
+  // Advance to Flop / Turn / River / Showdown whenever the hand continues
+  const handleContinueStreet = () => {
+    setHandSession(prev => advanceAcademyHandStreet(prev));
+    setCardSavedToast(false);
+    setQuizSecondsLeft(30);
+  };
+
+  // Next Hand generator: Fisher-Yates shuffled queues across categories & spots (0 intra-session repeats)
   const handleNextHand = () => {
     let nextCat: AcademyCategory = activeCategory;
     if (isInfiniteQuizMode) {
       if (quizCategoryDeckRef.current.length === 0) {
-        const shuffled = cryptoShuffle(CATEGORIES.map(c => c.id));
-        // Avoid repeating the immediate last category when starting a new cycle
+        const shuffled = fisherYatesShuffle(CATEGORIES.map(c => c.id));
         if (shuffled.length > 1 && shuffled[shuffled.length - 1] === activeCategory) {
           [shuffled[0], shuffled[shuffled.length - 1]] = [shuffled[shuffled.length - 1], shuffled[0]];
         }
@@ -431,31 +485,49 @@ export const AcademyRoadmapDashboard: React.FC = () => {
       nextCat = quizCategoryDeckRef.current.pop() || activeCategory;
       setActiveCategory(nextCat);
     }
-    setCurrentScenario(getNextAcademyScenario(nextCat, currentScenario.id));
-    setSelectedOptionIndex(null);
-    setHasAnswered(false);
+    const nextScenario = drawNextFromShuffledQueue(nextCat, currentScenario.id);
+    setHandSession(initAcademyHandSession(nextScenario));
     setCardSavedToast(false);
     setLastRatedGrade(null);
     setConceptRatedToast(null);
     setQuizSecondsLeft(30);
   };
 
-  // 1-Click Save to SM-2 Flashcards
+  // 1-Click Save to SM-2 Flashcards (captures complete board & full street analysis when played to Turn/River)
   const handleSaveToFlashcard = () => {
     try {
+      const boardForFlashcard =
+        handSession.stage === 'showdown' ? handSession.fullBoard : currentStep.visibleBoard;
+      const takeaway =
+        handSession.streetHistory.length > 1
+          ? handSession.streetHistory
+              .map(
+                s =>
+                  `${s.stage.toUpperCase()}: Elegiste ${s.chosenLabel} vs Óptimo ${s.optimalLabel} (${s.isCorrect ? 'OK' : `-${s.evLossPct}% EV`})`
+              )
+              .join(' | ') + (handSession.showdown ? ` — ${handSession.showdown.summaryText}` : '')
+          : currentStep.explanationDummies;
+
       AutoLearningEngine.getInstance().collectHand({
         heroPos: currentScenario.heroPos,
         villainPos: currentScenario.villainPos,
         heroCards: `${currentScenario.heroCards[0].rank}${SUIT_SYMBOLS[currentScenario.heroCards[0].suit]} ${currentScenario.heroCards[1].rank}${SUIT_SYMBOLS[currentScenario.heroCards[1].suit]}`,
-        board: currentScenario.board.map(c => `${c.rank}${SUIT_SYMBOLS[c.suit]}`).join(' '),
-        street: currentScenario.board.length === 0 ? 'preflop' : currentScenario.board.length === 3 ? 'flop' : currentScenario.board.length === 4 ? 'turn' : 'river',
+        board: boardForFlashcard.map(c => `${c.rank}${SUIT_SYMBOLS[c.suit]}`).join(' '),
+        street: handSession.stage === 'showdown' ? 'river' : currentStep.stage,
         category: currentScenario.categoryName,
-        potBB: currentScenario.potBB,
-        chosenAction: selectedOptionIndex !== null ? currentScenario.options[selectedOptionIndex].label : 'Estudio Manual',
-        optimalAction: `${currentScenario.correctAction} (Sizing: ${currentScenario.correctSizing || 'Estándar'})`,
-        evLossPct: 0,
+        potBB: handSession.potBB,
+        chosenAction:
+          selectedOptionIndex !== null && selectedOptionIndex >= 0 && currentStep.options[selectedOptionIndex]
+            ? currentStep.options[selectedOptionIndex].label
+            : 'Estudio Multi-Calle',
+        optimalAction: `${currentStep.correctAction} (Sizing: ${currentStep.correctSizing || 'Estándar'})`,
+        evLossPct:
+          handSession.showdown?.totalEvLossPct ??
+          (selectedOptionIndex !== null && selectedOptionIndex >= 0 && currentStep.options[selectedOptionIndex]
+            ? currentStep.options[selectedOptionIndex].evLossPct
+            : 0),
         isMistake: false,
-        keyTakeaway: currentScenario.explanationDummies
+        keyTakeaway: takeaway
       });
 
       setCardSavedToast(true);
@@ -628,67 +700,68 @@ export const AcademyRoadmapDashboard: React.FC = () => {
   }, [categoryStats]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-7">
       {/* Academy Top Hero */}
-      <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 shadow-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-blue-500/10 rounded-xl border border-blue-500/30 text-blue-400">
+      <div className="bg-neutral-900/55 border border-neutral-800/80 rounded-2xl p-6 sm:p-7 shadow-sm shadow-black/30 ring-1 ring-inset ring-white/[0.03] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5">
+        <div className="flex items-start sm:items-center gap-3.5">
+          <div className="p-2.5 bg-blue-500/10 rounded-xl border border-blue-500/30 text-blue-400 shrink-0">
             <GraduationCap className="w-6 h-6" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-white flex items-center gap-2 flex-wrap">
-              <span>Academia Allin School &amp; Dashboard D3.js</span>
-              <span className="text-xs text-blue-400 font-mono">
-                · NL02 ➔ NL100
+            <h2 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2 flex-wrap tracking-tight">
+              <span>Academia Allin School &amp; Progreso</span>
+              <span className="text-xs text-blue-400 font-mono font-normal">
+                · NL02 → NL100
               </span>
             </h2>
-            <p className="text-xs text-neutral-400 mt-0.5">
-              Simulador multi-mano (96+ spots base × permutación de palos), Evaluación Fija/Variable sin repetición, Auditoría D3 y Carrera SM-2.
+            <p className="text-xs sm:text-sm text-neutral-400 mt-1 leading-relaxed">
+              Barajado Fisher-Yates sin repetición por sesión, evaluación progresiva, analítica D3 y algoritmo SuperMemo SM-2.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 bg-neutral-950 px-4 py-2.5 rounded-xl border border-neutral-800 shrink-0">
+        <div className="flex items-center gap-3 bg-neutral-950/80 px-4 py-3 rounded-xl border border-neutral-800/80 shadow-sm shadow-black/25 shrink-0">
           <Award className="w-5 h-5 text-amber-400" />
           <div>
-            <span className="text-[10px] text-neutral-400 uppercase tracking-wide block">Dominio Global:</span>
-            <strong className="text-lg font-bold font-mono text-blue-400">{overallMastery}%</strong>
+            <span className="text-[11px] text-neutral-400 uppercase tracking-wider block">Dominio Global</span>
+            <strong className="text-lg font-bold font-mono tabular-nums text-blue-400">{overallMastery}%</strong>
           </div>
         </div>
       </div>
 
       {/* SubTab Navigation */}
-      <div className="flex items-center gap-2.5 border-b border-neutral-800 pb-2 overflow-x-auto">
+      <div className="flex items-center gap-2 border-b border-neutral-800/80 pb-3 overflow-x-auto">
         <button
           type="button"
           onClick={() => setActiveSubTab('sim')}
-          className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-all whitespace-nowrap cursor-pointer ${
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
             activeSubTab === 'sim'
-              ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-              : 'bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800'
+              ? 'bg-blue-600 text-white'
+              : 'bg-neutral-900/60 text-neutral-400 hover:text-white border border-neutral-800/80'
           }`}
         >
-          <span>🎯 Simulador Multi-Mano</span>
+          <Target className="w-3.5 h-3.5" />
+          <span>Simulador Multi-Mano</span>
         </button>
         <button
           type="button"
           onClick={() => setActiveSubTab('evaluation')}
-          className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-all whitespace-nowrap cursor-pointer ${
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
             activeSubTab === 'evaluation'
-              ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-              : 'bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800'
+              ? 'bg-blue-600 text-white'
+              : 'bg-neutral-900/60 text-neutral-400 hover:text-white border border-neutral-800/80'
           }`}
         >
           <ClipboardCheck className="w-3.5 h-3.5" />
-          <span>📝 Evaluación (Fijos + Variables)</span>
+          <span>Evaluación (Fijos + Variables)</span>
         </button>
         <button
           type="button"
           onClick={() => setActiveSubTab('dashboard')}
-          className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-all whitespace-nowrap cursor-pointer ${
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
             activeSubTab === 'dashboard'
-              ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-              : 'bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800'
+              ? 'bg-blue-600 text-white'
+              : 'bg-neutral-900/60 text-neutral-400 hover:text-white border border-neutral-800/80'
           }`}
         >
           <BarChart3 className="w-3.5 h-3.5" />
@@ -697,38 +770,40 @@ export const AcademyRoadmapDashboard: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveSubTab('roadmap')}
-          className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-all whitespace-nowrap cursor-pointer ${
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
             activeSubTab === 'roadmap'
-              ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-              : 'bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800'
+              ? 'bg-blue-600 text-white'
+              : 'bg-neutral-900/60 text-neutral-400 hover:text-white border border-neutral-800/80'
           }`}
         >
-          <span>🗺️ Hoja de Ruta (NL02 ➔ NL100)</span>
+          <MapIcon className="w-3.5 h-3.5" />
+          <span>Hoja de Ruta (NL02 → NL100)</span>
         </button>
         <button
           type="button"
           onClick={() => setActiveSubTab('flashcards')}
-          className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-all whitespace-nowrap cursor-pointer ${
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
             activeSubTab === 'flashcards'
-              ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-              : 'bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800'
+              ? 'bg-blue-600 text-white'
+              : 'bg-neutral-900/60 text-neutral-400 hover:text-white border border-neutral-800/80'
           }`}
         >
-          <span>🃏 Gestor Flashcards</span>
+          <Layers className="w-3.5 h-3.5" />
+          <span>Gestor Flashcards</span>
         </button>
         <button
           type="button"
           onClick={() => setActiveSubTab('concepts')}
-          className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-all whitespace-nowrap cursor-pointer ${
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
             activeSubTab === 'concepts'
-              ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-              : 'bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800'
+              ? 'bg-blue-600 text-white'
+              : 'bg-neutral-900/60 text-neutral-400 hover:text-white border border-neutral-800/80'
           }`}
         >
-          <Brain className="w-3.5 h-3.5 text-blue-400" />
-          <span>🧠 Conceptos &amp; Manos SM-2</span>
+          <Brain className="w-3.5 h-3.5" />
+          <span>Conceptos &amp; Manos SM-2</span>
           {sm2Stats.dueTodayCount > 0 && (
-            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-500 text-black font-bold font-mono">
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500 text-black font-bold font-mono tabular-nums">
               {sm2Stats.dueTodayCount}
             </span>
           )}
@@ -737,9 +812,9 @@ export const AcademyRoadmapDashboard: React.FC = () => {
 
       {/* VIEW 1: SIMULATOR & D3 DASHBOARD */}
       {activeSubTab === 'sim' && (
-        <div className="space-y-6">
+        <div className="space-y-7">
           {/* Categories Bar */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1.5 text-xs">
             {CATEGORIES.map(c => {
               const isSelected = activeCategory === c.id;
               const stat = categoryStats[c.id] || { attempts: 0, correct: 0 };
@@ -750,18 +825,17 @@ export const AcademyRoadmapDashboard: React.FC = () => {
                   key={c.id}
                   type="button"
                   onClick={() => handleSelectCategory(c.id)}
-                  className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl border whitespace-nowrap transition-all cursor-pointer ${
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
                     isSelected
-                      ? 'bg-neutral-800 border-blue-500 text-white ring-2 ring-blue-500/30 shadow-md font-semibold'
-                      : 'bg-neutral-900/80 border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-700'
+                      ? 'bg-neutral-800/90 border-blue-500 text-white font-semibold shadow-sm shadow-black/25'
+                      : 'bg-neutral-900/55 border-neutral-800/80 text-neutral-400 hover:text-white hover:border-neutral-700'
                   }`}
                 >
-                  <span>{c.icon}</span>
                   <span>{c.label}</span>
-                  <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${
-                    pct >= 75 ? 'bg-blue-950 text-blue-300 border border-blue-900' :
-                    pct >= 50 ? 'bg-amber-950 text-amber-300 border border-amber-900' :
-                    'bg-neutral-800 text-neutral-400'
+                  <span className={`text-[11px] font-mono tabular-nums ${
+                    pct >= 75 ? 'text-blue-400' :
+                    pct >= 50 ? 'text-amber-400' :
+                    'text-neutral-500'
                   }`}>
                     {pct}%
                   </span>
@@ -773,8 +847,8 @@ export const AcademyRoadmapDashboard: React.FC = () => {
           {/* Main Grid: Interactive Practice Simulator on Left, D3 Dashboard on Right */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* Left: Interactive Category Quiz (7 Cols) */}
-            <div className="lg:col-span-7 bg-neutral-900 border border-neutral-800 rounded-2xl p-6 shadow-xl space-y-5">
-              <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-neutral-800">
+            <div className="lg:col-span-7 bg-neutral-900/55 border border-neutral-800/80 rounded-2xl p-6 sm:p-7 shadow-sm shadow-black/30 ring-1 ring-inset ring-white/[0.03] space-y-6">
+              <div className="flex flex-wrap items-center justify-between gap-3 pb-3.5 border-b border-neutral-800/80">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold uppercase tracking-wider text-blue-400">
                     Spot Activo: {currentScenario.categoryName}
@@ -836,140 +910,345 @@ export const AcademyRoadmapDashboard: React.FC = () => {
                 </div>
               )}
 
-              <h3 className="text-base font-bold text-white">
-                {currentScenario.title}
-              </h3>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h3 className="text-base font-bold text-white">
+                  {currentScenario.title}
+                </h3>
 
-              {/* Table Context Box */}
-              <div className="p-4 bg-neutral-950 rounded-xl border border-neutral-800/80 flex flex-wrap items-center justify-between gap-4">
-                {/* Hero Cards */}
-                <div className="flex items-center gap-3">
-                  <span className="text-xs font-semibold text-neutral-400">Hero ({currentScenario.heroPos}):</span>
-                  <div className="flex items-center gap-1.5">
-                    {currentScenario.heroCards.map((c, i) => (
-                      <div
-                        key={i}
-                        className="w-10 h-14 bg-neutral-850 rounded-lg border border-neutral-700 flex flex-col items-center justify-center font-mono font-bold text-base shadow"
-                      >
-                        <span className={SUIT_COLORS[c.suit].text}>{c.rank}</span>
-                        <span className={`text-xs ${SUIT_COLORS[c.suit].text}`}>{SUIT_SYMBOLS[c.suit]}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Board Cards (if postflop) */}
-                {currentScenario.board.length > 0 ? (
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-semibold text-neutral-400">Board:</span>
-                    <div className="flex items-center gap-1.5">
-                      {currentScenario.board.map((c, i) => (
-                        <div
-                          key={i}
-                          className="w-10 h-14 bg-neutral-850 rounded-lg border border-neutral-700 flex flex-col items-center justify-center font-mono font-bold text-base shadow"
-                        >
-                          <span className={SUIT_COLORS[c.suit].text}>{c.rank}</span>
-                          <span className={`text-xs ${SUIT_COLORS[c.suit].text}`}>{SUIT_SYMBOLS[c.suit]}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <span className="text-xs px-2.5 py-1 bg-neutral-850 text-neutral-400 rounded-lg font-mono">
-                    Fase Preflop
-                  </span>
-                )}
-
-                {/* Pot & Action */}
-                <div className="text-right">
-                  <div className="text-[10px] text-neutral-500 uppercase">Acción Previa:</div>
-                  <div className="text-xs font-bold text-white">{currentScenario.villainAction}</div>
-                  <div className="text-[11px] text-cyan-400 font-mono mt-0.5">Bote: {currentScenario.potBB} BB</div>
-                </div>
-              </div>
-
-              {/* Interactive Options */}
-              <div className="space-y-2.5 pt-2">
-                <span className="text-xs font-semibold text-neutral-300 block">
-                  ¿Cuál es la acción matemáticamente óptima?
-                </span>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                  {currentScenario.options.map((opt, idx) => {
-                    const isSelected = selectedOptionIndex === idx;
-                    let btnStyle = 'bg-neutral-800/80 border-neutral-700 hover:bg-neutral-750 text-neutral-200';
-
-                    if (hasAnswered) {
-                      if (opt.isCorrect) {
-                        btnStyle = 'bg-emerald-950/80 border-emerald-500 text-emerald-200 ring-2 ring-emerald-500/30 font-bold';
-                      } else if (isSelected && !opt.isCorrect) {
-                        btnStyle = 'bg-red-950/80 border-red-500 text-red-200 ring-2 ring-red-500/30';
-                      } else {
-                        btnStyle = 'bg-neutral-900 border-neutral-800 text-neutral-500 opacity-60';
-                      }
-                    }
+                {/* Multi-Street Stepper: Preflop -> Flop -> Turn -> River -> Showdown */}
+                <div className="flex items-center gap-1 text-[10px] font-mono flex-wrap">
+                  {(['preflop', 'flop', 'turn', 'river', 'showdown'] as const).map(st => {
+                    const orderMap = { preflop: 0, flop: 1, turn: 2, river: 3, showdown: 4, folded: -1 };
+                    const curOrder = orderMap[handSession.stage];
+                    const stOrder = orderMap[st];
+                    const isCurrent = handSession.stage === st;
+                    const isPassed =
+                      curOrder > stOrder ||
+                      handSession.streetHistory.some(h => h.stage === st);
 
                     return (
-                      <button
-                        key={idx}
-                        type="button"
-                        disabled={hasAnswered}
-                        onClick={() => handleSelectOption(idx)}
-                        className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${btnStyle}`}
+                      <span
+                        key={st}
+                        className={`px-2 py-0.5 rounded-md border font-bold uppercase ${
+                          isCurrent
+                            ? 'bg-blue-600/30 border-blue-400 text-blue-200'
+                            : isPassed
+                            ? 'bg-emerald-950/60 border-emerald-700/80 text-emerald-300'
+                            : 'bg-neutral-950 border-neutral-800 text-neutral-500'
+                        }`}
                       >
-                        <div className="text-xs font-semibold">{opt.label}</div>
-                        {hasAnswered && (
-                          <div className="text-[10px] mt-1 font-mono">
-                            {opt.isCorrect ? (
-                              <span className="text-emerald-400 font-bold">✓ Equilibrio Óptimo (0% EV Loss)</span>
-                            ) : (
-                              <span className="text-red-400">✗ -{opt.evLossPct}% EV Loss</span>
-                            )}
-                          </div>
-                        )}
-                      </button>
+                        {isPassed && !isCurrent ? `✓ ${st}` : st}
+                      </span>
                     );
                   })}
                 </div>
               </div>
 
-              {/* Explanation Box (Visible After Answering) */}
-              {hasAnswered && (
-                <div className="p-4 bg-neutral-950 border border-neutral-800 rounded-xl space-y-3 animate-in fade-in duration-200">
-                  <div className="flex items-center justify-between flex-wrap gap-2">
-                    <div className="flex items-center gap-2 text-xs font-bold text-amber-400 uppercase tracking-wide">
-                      <Brain className="w-4 h-4" />
-                      <span>Explicación Clara Paso a Paso:</span>
+              {/* Table Context Box */}
+              <div className="p-4 bg-neutral-950 rounded-xl border border-neutral-800/80 flex flex-wrap items-center justify-between gap-4">
+                {/* Hero Cards */}
+                <div className="flex items-center gap-3">
+                  <div>
+                    <span className="text-xs font-semibold text-neutral-400 block">
+                      Hero ({currentScenario.heroPos})
+                    </span>
+                    <span className="text-[10px] font-mono text-emerald-400">
+                      {currentStep.heroHandLabel}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {handSession.heroCards.map((c, i) => (
+                      <PlayingCard key={`${c.id}-${i}`} card={c} size="sm" />
+                    ))}
+                  </div>
+                </div>
+
+                {/* Progressive Community Board (0 -> 3 Flop -> 4 Turn -> 5 River) */}
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <span className="text-xs font-semibold text-neutral-400">Board:</span>
+                  <div className="flex items-center gap-1.5">
+                    {[0, 1, 2, 3, 4].map(slotIdx => {
+                      const boardToShow =
+                        handSession.stage === 'showdown'
+                          ? handSession.fullBoard
+                          : currentStep.visibleBoard;
+                      const card = boardToShow[slotIdx];
+                      const slotLabel = slotIdx < 3 ? `F${slotIdx + 1}` : slotIdx === 3 ? 'Turn' : 'River';
+                      if (card) {
+                        return (
+                          <PlayingCard
+                            key={`${card.id}-${slotIdx}`}
+                            card={card}
+                            size="sm"
+                            label={slotIdx === 3 ? 'Turn' : slotIdx === 4 ? 'River' : undefined}
+                            highlight={
+                              (slotIdx === 3 && handSession.stage === 'turn') ||
+                              (slotIdx === 4 && handSession.stage === 'river')
+                                ? 'blue'
+                                : 'none'
+                            }
+                          />
+                        );
+                      }
+                      return (
+                        <div
+                          key={slotIdx}
+                          className="w-10 h-14 rounded-lg border border-dashed border-neutral-800 bg-neutral-900/60 flex items-center justify-center text-[9px] font-mono text-neutral-600 select-none"
+                        >
+                          {slotLabel}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Villain & Pot */}
+                <div className="flex items-center gap-3 ml-auto">
+                  <div className="flex items-center gap-1">
+                    {handSession.stage === 'showdown' ? (
+                      handSession.villainCards.map((c, i) => (
+                        <PlayingCard key={`v-${c.id}-${i}`} card={c} size="xs" highlight="amber" />
+                      ))
+                    ) : (
+                      <>
+                        <PlayingCardBack size="xs" />
+                        <PlayingCardBack size="xs" />
+                      </>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] text-neutral-500 uppercase">
+                      {handSession.stage === 'showdown' ? 'Showdown 7 Cartas' : `Acción (${currentStep.stage.toUpperCase()}):`}
                     </div>
+                    <div className="text-xs font-bold text-white">{currentStep.villainAction}</div>
+                    <div className="text-[11px] text-cyan-400 font-mono mt-0.5">Bote: {handSession.potBB} BB</div>
+                  </div>
+                </div>
+              </div>
 
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={handleSaveToFlashcard}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-blue-300 rounded-lg text-xs font-semibold transition-colors border border-blue-500/30 cursor-pointer"
-                        title="Guardar esta mano para repaso espaciado con algoritmo SM-2"
-                      >
-                        <Bookmark className="w-3.5 h-3.5 text-blue-400" />
-                        <span>{cardSavedToast ? '✓ Guardada en SM-2!' : 'Guardar en Flashcards'}</span>
-                      </button>
+              {/* Active Street Interactive Decision OR Final Multi-Street Showdown */}
+              {handSession.stage !== 'showdown' && handSession.stage !== 'folded' ? (
+                <>
+                  <div className="space-y-2.5 pt-2">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <span className="text-xs font-semibold text-neutral-300">
+                        Decisión en <strong className="text-blue-400 uppercase">{currentStep.stage}</strong> — ¿Cuál es la acción óptima?
+                      </span>
+                      <span className="text-[11px] font-mono text-neutral-500">
+                        Frec Nash: {currentStep.gtoFrequency}%
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      {currentStep.options.map((opt, idx) => {
+                        const isSelected = selectedOptionIndex === idx;
+                        let btnStyle = 'bg-neutral-800/80 border-neutral-700 hover:bg-neutral-700 text-neutral-200';
 
-                      <button
-                        type="button"
-                        onClick={handleNextHand}
-                        className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer shadow"
-                      >
-                        <span>Siguiente Mano Dinámica</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
-                      </button>
+                        if (hasAnswered) {
+                          if (opt.isCorrect) {
+                            btnStyle = 'bg-emerald-950/80 border-emerald-500 text-emerald-200 ring-2 ring-emerald-500/30 font-bold';
+                          } else if (isSelected && !opt.isCorrect) {
+                            btnStyle = 'bg-red-950/80 border-red-500 text-red-200 ring-2 ring-red-500/30';
+                          } else {
+                            btnStyle = 'bg-neutral-900 border-neutral-800 text-neutral-500 opacity-60';
+                          }
+                        }
+
+                        return (
+                          <button
+                            key={idx}
+                            type="button"
+                            disabled={hasAnswered}
+                            onClick={() => handleSelectOption(idx)}
+                            className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${btnStyle}`}
+                          >
+                            <div className="text-xs font-semibold">{opt.label}</div>
+                            {hasAnswered && (
+                              <div className="text-[10px] mt-1 font-mono">
+                                {opt.isCorrect ? (
+                                  <span className="text-emerald-400 font-bold">✓ Equilibrio Óptimo (0% EV Loss)</span>
+                                ) : (
+                                  <span className="text-red-400">✗ -{opt.evLossPct}% EV Loss</span>
+                                )}
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
 
-                  <p className="text-xs text-neutral-300 leading-relaxed font-sans">
-                    {currentScenario.explanationDummies}
-                  </p>
+                  {/* Explanation Box After Street Decision */}
+                  {hasAnswered && (() => {
+                    const chosenAction = handSession.lastChosenAction || '';
+                    const upcomingStage = getNextAcademyStage(currentStep.stage, chosenAction);
+                    const canContinue = !isFoldActionCode(chosenAction);
+                    const continueLabel =
+                      upcomingStage === 'flop'
+                        ? 'Repartir Flop (3 Cartas)'
+                        : upcomingStage === 'turn'
+                        ? 'Continuar al Turn (4ª Carta)'
+                        : upcomingStage === 'river'
+                        ? 'Continuar al River (5ª Carta)'
+                        : 'Ver Showdown y Análisis Completo';
 
-                  <div className="p-2.5 bg-red-950/30 border border-red-900/50 rounded-lg text-xs text-red-300 flex items-start gap-2">
-                    <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-                    <span>{currentScenario.leakWarning}</span>
+                    return (
+                      <div className="p-4 bg-neutral-950 border border-neutral-800 rounded-xl space-y-3 animate-in fade-in duration-200">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <div className="flex items-center gap-2 text-xs font-bold text-amber-400 uppercase tracking-wide">
+                            <Brain className="w-4 h-4" />
+                            <span>Análisis {currentStep.stage.toUpperCase()} Paso a Paso:</span>
+                          </div>
+
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={handleSaveToFlashcard}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-blue-300 rounded-lg text-xs font-semibold transition-colors border border-blue-500/30 cursor-pointer"
+                              title="Guardar esta mano para repaso espaciado con algoritmo SM-2"
+                            >
+                              <Bookmark className="w-3.5 h-3.5 text-blue-400" />
+                              <span>{cardSavedToast ? '✓ Guardada en SM-2!' : 'Guardar en Flashcards'}</span>
+                            </button>
+
+                            {canContinue && (
+                              <button
+                                type="button"
+                                onClick={handleContinueStreet}
+                                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer shadow"
+                              >
+                                <span>{continueLabel}</span>
+                                <ArrowRight className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={handleNextHand}
+                              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer shadow"
+                            >
+                              <span>Nueva Mano</span>
+                              <ArrowRight className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <p className="text-xs text-neutral-300 leading-relaxed font-sans">
+                          {currentStep.explanationDummies}
+                        </p>
+
+                        <div className="p-2.5 bg-red-950/30 border border-red-900/50 rounded-lg text-xs text-red-300 flex items-start gap-2">
+                          <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                          <span>{currentStep.leakWarning}</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </>
+              ) : (
+                /* SHOWDOWN OR FOLD COMPLETE MULTI-STREET REVIEW */
+                <div className="p-5 bg-neutral-950 border border-neutral-800 rounded-xl space-y-4 animate-in fade-in duration-200">
+                  {handSession.stage === 'showdown' && handSession.showdown ? (
+                    <div className={`p-4 rounded-xl border ${
+                      handSession.showdown.winner === 'hero'
+                        ? 'bg-emerald-950/30 border-emerald-500/50'
+                        : handSession.showdown.winner === 'villain'
+                        ? 'bg-rose-950/30 border-rose-500/50'
+                        : 'bg-blue-950/30 border-blue-500/50'
+                    } space-y-2`}>
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <span className="text-sm font-bold text-white flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                          <span>
+                            {handSession.showdown.winner === 'hero'
+                              ? `¡Hero Gana el Bote (${handSession.showdown.finalPotBB} BB)!`
+                              : handSession.showdown.winner === 'villain'
+                              ? `Villano Gana el Bote (${handSession.showdown.finalPotBB} BB)`
+                              : `Bote Dividido (${handSession.showdown.finalPotBB} BB)`}
+                          </span>
+                        </span>
+                        <span className="text-[11px] font-mono text-neutral-300">
+                          EV Loss Total: <strong className={handSession.showdown.totalEvLossPct === 0 ? 'text-emerald-400' : 'text-amber-300'}>-{handSession.showdown.totalEvLossPct}%</strong>
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-mono pt-1">
+                        <div className="p-2.5 rounded-lg bg-neutral-900/90 border border-neutral-800">
+                          <span className="text-[10px] text-neutral-500 uppercase block">Mano Final Hero ({currentScenario.heroPos})</span>
+                          <strong className="text-emerald-300">{handSession.showdown.heroEval.description}</strong>
+                        </div>
+                        <div className="p-2.5 rounded-lg bg-neutral-900/90 border border-neutral-800">
+                          <span className="text-[10px] text-neutral-500 uppercase block">Mano Final Villano ({currentScenario.villainPos})</span>
+                          <strong className="text-amber-300">{handSession.showdown.villainEval.description}</strong>
+                        </div>
+                      </div>
+
+                      <p className="text-xs text-neutral-300 leading-relaxed pt-1">
+                        {handSession.showdown.summaryText}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="p-4 rounded-xl border border-amber-500/40 bg-amber-950/20 space-y-1.5">
+                      <div className="text-sm font-bold text-amber-300">Mano finalizada por Fold en {currentStep.stage.toUpperCase()}</div>
+                      <p className="text-xs text-neutral-300">{currentStep.explanationDummies}</p>
+                    </div>
+                  )}
+
+                  {/* Full Street-by-Street Breakdown (Preflop / Flop / Turn / River) */}
+                  <div className="space-y-2">
+                    <div className="text-xs font-bold uppercase tracking-wider text-blue-400 flex items-center gap-1.5">
+                      <Brain className="w-4 h-4" />
+                      <span>Análisis Completo Calle a Calle</span>
+                    </div>
+                    <div className="space-y-2">
+                      {handSession.streetHistory.map((rec, i) => (
+                        <div
+                          key={i}
+                          className={`p-3 rounded-xl border text-xs space-y-1 ${
+                            rec.isCorrect
+                              ? 'bg-neutral-900/70 border-emerald-800/50'
+                              : 'bg-neutral-900/70 border-rose-800/50'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between flex-wrap gap-2 font-mono">
+                            <div className="flex items-center gap-2">
+                              <span className="px-1.5 py-0.5 rounded bg-neutral-950 border border-neutral-800 text-blue-300 font-bold uppercase text-[10px]">
+                                {rec.stage}
+                              </span>
+                              <span className="text-white font-semibold">
+                                Elegiste: {rec.chosenLabel}
+                              </span>
+                            </div>
+                            <span className={`font-bold text-[11px] ${rec.isCorrect ? 'text-emerald-400' : 'text-rose-400'}`}>
+                              {rec.isCorrect ? '✓ Óptimo (0% EV)' : `✗ -${rec.evLossPct}% EV · Óptimo: ${rec.optimalLabel}`}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-neutral-300 leading-relaxed font-sans">
+                            {rec.explanationDummies}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Final Action Controls */}
+                  <div className="flex items-center justify-between flex-wrap gap-2 pt-2 border-t border-neutral-800">
+                    <button
+                      type="button"
+                      onClick={handleSaveToFlashcard}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-blue-300 rounded-lg text-xs font-semibold transition-colors border border-blue-500/30 cursor-pointer"
+                    >
+                      <Bookmark className="w-3.5 h-3.5 text-blue-400" />
+                      <span>{cardSavedToast ? '✓ Mano Completa Guardada en SM-2!' : 'Guardar Mano Completa en SM-2'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleNextHand}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer shadow"
+                    >
+                      <span>Siguiente Mano Dinámica</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
                   </div>
 
                   {/* SM-2 Interactive Concept Difficulty Evaluator */}
@@ -987,10 +1266,6 @@ export const AcademyRoadmapDashboard: React.FC = () => {
                         </div>
                       )}
                     </div>
-
-                    <p className="text-[11px] text-neutral-400 leading-snug">
-                      Marca tu facilidad de recuerdo (0 a 5). El algoritmo SuperMemo calculará el momento óptimo para reprogramar este spot antes de que decaiga en tu memoria:
-                    </p>
 
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
                       {SM2_QUALITY_RATINGS.map(rate => {
@@ -1026,11 +1301,11 @@ export const AcademyRoadmapDashboard: React.FC = () => {
             {/* Right: D3 Progress Chart & IA Diagnostic Report (5 Cols) */}
             <div className="lg:col-span-5 space-y-6">
               {/* D3 Chart Card */}
-              <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 shadow-xl space-y-3">
+              <div className="bg-neutral-900/55 border border-neutral-800/80 rounded-2xl p-6 shadow-sm shadow-black/30 ring-1 ring-inset ring-white/[0.03] space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold text-neutral-200 uppercase tracking-wider flex items-center gap-2">
+                  <h3 className="text-xs font-semibold text-neutral-200 uppercase tracking-wider flex items-center gap-2">
                     <BarChart3 className="w-4 h-4 text-blue-400" />
-                    <span>Dominio Histórico por Categoría (D3.js):</span>
+                    <span>Dominio Histórico por Categoría (D3.js)</span>
                   </h3>
                 </div>
 
@@ -1044,21 +1319,21 @@ export const AcademyRoadmapDashboard: React.FC = () => {
               </div>
 
               {/* AI Diagnostic Report / Live Computed Leak Summary */}
-              <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 shadow-xl space-y-3">
-                <div className="flex items-center gap-2 text-xs font-bold text-amber-400 uppercase tracking-wider">
+              <div className="bg-neutral-900/55 border border-neutral-800/80 rounded-2xl p-6 shadow-sm shadow-black/30 ring-1 ring-inset ring-white/[0.03] space-y-4">
+                <div className="flex items-center gap-2 text-xs font-semibold text-amber-400 uppercase tracking-wider">
                   <Zap className="w-4 h-4" />
-                  <span>Reporte de Diagnóstico en Vivo (12 Categorías):</span>
+                  <span>Reporte de Diagnóstico en Vivo (12 Categorías)</span>
                 </div>
 
-                <div className="space-y-2 text-xs">
-                  <div className="p-2.5 bg-neutral-950 rounded-lg border border-neutral-800 text-neutral-300 leading-relaxed">
-                    <strong className="text-blue-400 block mb-0.5">
+                <div className="space-y-3 text-xs">
+                  <div className="p-3.5 bg-neutral-950/90 rounded-xl border border-neutral-800/80 text-neutral-300 leading-relaxed">
+                    <strong className="text-blue-400 block mb-1">
                       Fortaleza: {liveDiagnostic.strengthLabel}
                     </strong>
                     {liveDiagnostic.strengthDetail}
                   </div>
-                  <div className="p-2.5 bg-neutral-950 rounded-lg border border-neutral-800 text-neutral-300 leading-relaxed">
-                    <strong className={`${liveDiagnostic.hasData ? 'text-red-400' : 'text-amber-400'} block mb-0.5`}>
+                  <div className="p-3.5 bg-neutral-950/90 rounded-xl border border-neutral-800/80 text-neutral-300 leading-relaxed">
+                    <strong className={`${liveDiagnostic.hasData ? 'text-red-400' : 'text-amber-400'} block mb-1`}>
                       {liveDiagnostic.hasData ? 'Prioridad de Mejora:' : 'Estado Inicial:'} {liveDiagnostic.weaknessLabel}
                     </strong>
                     {liveDiagnostic.weaknessDetail}
@@ -1080,16 +1355,16 @@ export const AcademyRoadmapDashboard: React.FC = () => {
         <ProgressDashboard />
       )}
 
-      {/* VIEW 2: CAREER ROADMAP (NL02 ➔ NL100) */}
+      {/* VIEW 2: ROADMAP NL02 -> NL100 */}
       {activeSubTab === 'roadmap' && (
-        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 shadow-xl space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-neutral-800">
+        <div className="bg-neutral-900/55 border border-neutral-800/80 rounded-2xl p-6 sm:p-7 shadow-sm shadow-black/30 ring-1 ring-inset ring-white/[0.03] space-y-7">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-neutral-800/80">
             <div>
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              <h3 className="text-xl font-bold tracking-tight text-white flex items-center gap-2.5">
                 <Compass className="w-5 h-5 text-blue-400" />
-                <span>Hoja de Ruta de Carrera ("Career Roadmap"): NL02 ➔ NL100</span>
+                <span>Hoja de Ruta de Carrera: NL02 → NL100</span>
               </h3>
-              <p className="text-xs text-neutral-400 mt-0.5">
+              <p className="text-xs sm:text-sm text-neutral-400 mt-1 leading-relaxed">
                 4 fases secuenciales con hitos de Bankroll, Mindset, Técnica y Análisis de Datos. Guarda tu progreso automáticamente.
               </p>
             </div>
@@ -1097,7 +1372,7 @@ export const AcademyRoadmapDashboard: React.FC = () => {
               type="button"
               onClick={() => void handleGenerateAiRoadmap()}
               disabled={generatingAiRoadmap}
-              className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-blue-500/20 cursor-pointer disabled:opacity-60 shrink-0"
+              className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm shadow-black/30 cursor-pointer disabled:opacity-60 shrink-0"
             >
               <Sparkles className={`w-3.5 h-3.5 ${generatingAiRoadmap ? 'animate-spin' : ''}`} />
               <span>{generatingAiRoadmap ? 'Generando Plan IA...' : 'Plan Personalizado Gemini AI'}</span>
@@ -1105,29 +1380,29 @@ export const AcademyRoadmapDashboard: React.FC = () => {
           </div>
 
           {aiRoadmapError && (
-            <div className="p-3 bg-rose-950/50 border border-rose-700/60 rounded-xl text-xs text-rose-200">
+            <div className="p-3.5 bg-rose-950/50 border border-rose-700/60 rounded-xl text-xs text-rose-200">
               {aiRoadmapError}
             </div>
           )}
 
           {aiRoadmap && (
-            <div className="p-5 bg-blue-950/20 border border-blue-500/40 rounded-2xl space-y-3 text-xs">
+            <div className="p-5 sm:p-6 bg-blue-950/20 border border-blue-500/35 rounded-2xl space-y-4 text-xs shadow-sm shadow-black/25">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="font-bold text-blue-300 flex items-center gap-2 text-sm">
+                <div className="font-bold text-blue-300 flex items-center gap-2 text-sm tracking-tight">
                   <Sparkles className="w-4 h-4" />
                   <span>{aiRoadmap.headline}</span>
                 </div>
-                <span className="font-mono text-[11px] px-2.5 py-0.5 rounded bg-neutral-950 border border-blue-500/40 text-cyan-300">
+                <span className="font-mono text-[11px] px-2.5 py-1 rounded-lg bg-neutral-950 border border-blue-500/40 text-cyan-300">
                   Meta: {aiRoadmap.weeklyGoal}
                 </span>
               </div>
               {aiRoadmap.steps.length > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {aiRoadmap.steps.map((st, idx) => (
-                    <div key={idx} className="p-3.5 bg-neutral-950 border border-neutral-800 rounded-xl space-y-1">
-                      <div className="text-[10px] font-mono uppercase text-blue-400">{st.focusArea}</div>
+                    <div key={idx} className="p-4 bg-neutral-950/90 border border-neutral-800/80 rounded-xl space-y-1.5 shadow-sm shadow-black/20">
+                      <div className="text-[10px] font-mono uppercase tracking-wider text-blue-400">{st.focusArea}</div>
                       <div className="font-bold text-white">{idx + 1}. {st.title}</div>
-                      <p className="text-[11px] text-neutral-300 leading-relaxed">{st.action}</p>
+                      <p className="text-xs text-neutral-300 leading-relaxed">{st.action}</p>
                     </div>
                   ))}
                 </div>
@@ -1135,7 +1410,7 @@ export const AcademyRoadmapDashboard: React.FC = () => {
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {roadmap.map(phase => {
               const completedCount = phase.milestones.filter(m => m.done).length;
               const totalCount = phase.milestones.length;
@@ -1144,7 +1419,7 @@ export const AcademyRoadmapDashboard: React.FC = () => {
               return (
                 <div
                   key={phase.id}
-                  className="p-5 bg-neutral-950/80 border border-neutral-800 rounded-xl space-y-4 shadow"
+                  className="p-6 bg-neutral-950/80 border border-neutral-800/80 rounded-2xl space-y-4 shadow-sm shadow-black/25 ring-1 ring-inset ring-white/[0.02]"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -1216,55 +1491,55 @@ export const AcademyRoadmapDashboard: React.FC = () => {
 
       {/* VIEW 4: SM-2 CONCEPTS & HAND HISTORY REPETITION ENGINE */}
       {activeSubTab === 'concepts' && (
-        <div className="space-y-6 animate-fadeIn">
+        <div className="space-y-7 animate-fadeIn">
           {/* Header SM-2 Metrics Banner */}
-          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-blue-500/10 rounded-xl border border-blue-500/30 text-blue-400">
+          <div className="bg-neutral-900/55 border border-neutral-800/80 rounded-2xl p-6 sm:p-7 shadow-sm shadow-black/30 ring-1 ring-inset ring-white/[0.03] flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+            <div className="flex items-start sm:items-center gap-3.5">
+              <div className="p-2.5 bg-blue-500/10 rounded-xl border border-blue-500/30 text-blue-400 shrink-0">
                 <Brain className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                  Motor Universal de Repetición Espaciada SM-2
-                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-950 border border-blue-800 text-blue-300 font-mono">
-                    Conceptos & Manos
+                <h3 className="text-lg sm:text-xl font-bold tracking-tight text-white flex items-center gap-2 flex-wrap">
+                  <span>Motor Universal de Repetición Espaciada SM-2</span>
+                  <span className="text-xs text-blue-400 font-mono font-normal">
+                    · Conceptos &amp; Manos
                   </span>
                 </h3>
-                <p className="text-xs text-neutral-400 mt-0.5">
+                <p className="text-xs sm:text-sm text-neutral-400 mt-1 leading-relaxed">
                   El algoritmo SuperMemo programa el repaso de tus fundamentos y manos en el momento exacto antes del olvido.
                 </p>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full md:w-auto">
-              <div className="px-3 py-1.5 bg-neutral-950 rounded-xl border border-neutral-800 text-center">
-                <span className="text-[10px] text-neutral-500 uppercase block">Total Ítems:</span>
-                <strong className="text-sm font-bold text-white font-mono">{sm2Stats.totalItems}</strong>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 w-full md:w-auto">
+              <div className="px-3 py-1.5 bg-neutral-950/80 rounded-xl border border-neutral-800/80 text-center">
+                <span className="text-[10px] text-neutral-500 uppercase block">Total Ítems</span>
+                <strong className="text-sm font-bold text-white font-mono tabular-nums">{sm2Stats.totalItems}</strong>
               </div>
-              <div className="px-3 py-1.5 bg-neutral-950 rounded-xl border border-neutral-800 text-center">
-                <span className="text-[10px] text-amber-500 uppercase block">Pendientes Hoy:</span>
-                <strong className="text-sm font-bold text-amber-400 font-mono">{sm2Stats.dueTodayCount}</strong>
+              <div className="px-3 py-1.5 bg-neutral-950/80 rounded-xl border border-neutral-800/80 text-center">
+                <span className="text-[10px] text-amber-500 uppercase block">Pendientes Hoy</span>
+                <strong className="text-sm font-bold text-amber-400 font-mono tabular-nums">{sm2Stats.dueTodayCount}</strong>
               </div>
-              <div className="px-3 py-1.5 bg-neutral-950 rounded-xl border border-neutral-800 text-center">
-                <span className="text-[10px] text-blue-500 uppercase block">EF Medio:</span>
-                <strong className="text-sm font-bold text-blue-300 font-mono">{sm2Stats.averageEaseFactor}</strong>
+              <div className="px-3 py-1.5 bg-neutral-950/80 rounded-xl border border-neutral-800/80 text-center">
+                <span className="text-[10px] text-blue-500 uppercase block">EF Medio</span>
+                <strong className="text-sm font-bold text-blue-300 font-mono tabular-nums">{sm2Stats.averageEaseFactor}</strong>
               </div>
-              <div className="px-3 py-1.5 bg-neutral-950 rounded-xl border border-neutral-800 text-center">
-                <span className="text-[10px] text-emerald-500 uppercase block">Dominados:</span>
-                <strong className="text-sm font-bold text-emerald-400 font-mono">{sm2Stats.masteredCount}</strong>
+              <div className="px-3 py-1.5 bg-neutral-950/80 rounded-xl border border-neutral-800/80 text-center">
+                <span className="text-[10px] text-emerald-500 uppercase block">Dominados</span>
+                <strong className="text-sm font-bold text-emerald-400 font-mono tabular-nums">{sm2Stats.masteredCount}</strong>
               </div>
             </div>
           </div>
 
           {/* Filter Bar */}
-          <div className="flex items-center gap-2 border-b border-neutral-800 pb-2 overflow-x-auto text-xs">
+          <div className="flex items-center gap-2 border-b border-neutral-800/80 pb-2 overflow-x-auto text-xs">
             <button
               type="button"
               onClick={() => setSm2ItemsFilter('all')}
-              className={`px-3.5 py-1.5 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
                 sm2ItemsFilter === 'all'
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
-                  : 'bg-neutral-900 text-neutral-400 hover:text-white'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-neutral-900/60 text-neutral-400 hover:text-white'
               }`}
             >
               <Layers className="w-3.5 h-3.5" />
@@ -1274,40 +1549,40 @@ export const AcademyRoadmapDashboard: React.FC = () => {
             <button
               type="button"
               onClick={() => setSm2ItemsFilter('due')}
-              className={`px-3.5 py-1.5 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
                 sm2ItemsFilter === 'due'
-                  ? 'bg-amber-600 text-white shadow-md shadow-amber-500/20'
-                  : 'bg-neutral-900 text-neutral-400 hover:text-white'
+                  ? 'bg-amber-600 text-white'
+                  : 'bg-neutral-900/60 text-neutral-400 hover:text-white'
               }`}
             >
               <Clock className="w-3.5 h-3.5" />
-              <span>🎯 Pendientes Hoy ({sm2Stats.dueTodayCount})</span>
+              <span>Pendientes Hoy ({sm2Stats.dueTodayCount})</span>
             </button>
 
             <button
               type="button"
               onClick={() => setSm2ItemsFilter('concepts')}
-              className={`px-3.5 py-1.5 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
                 sm2ItemsFilter === 'concepts'
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
-                  : 'bg-neutral-900 text-neutral-400 hover:text-white'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-neutral-900/60 text-neutral-400 hover:text-white'
               }`}
             >
               <Brain className="w-3.5 h-3.5" />
-              <span>💡 Conceptos Teóricos ({sm2Stats.totalConcepts})</span>
+              <span>Conceptos Teóricos ({sm2Stats.totalConcepts})</span>
             </button>
 
             <button
               type="button"
               onClick={() => setSm2ItemsFilter('hands')}
-              className={`px-3.5 py-1.5 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3.5 py-1.5 rounded-xl font-semibold transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
                 sm2ItemsFilter === 'hands'
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
-                  : 'bg-neutral-900 text-neutral-400 hover:text-white'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-neutral-900/60 text-neutral-400 hover:text-white'
               }`}
             >
               <History className="w-3.5 h-3.5" />
-              <span>🃏 Historial de Manos ({sm2Stats.totalHands})</span>
+              <span>Historial de Manos ({sm2Stats.totalHands})</span>
             </button>
           </div>
 
@@ -1315,19 +1590,21 @@ export const AcademyRoadmapDashboard: React.FC = () => {
           {(() => {
             const allItems = SpacedRepetitionManager.getInstance().getAllItems();
             const now = Date.now();
-            const filtered = allItems.filter(item => {
-              if (sm2ItemsFilter === 'due') return item.nextReviewDate <= now;
-              if (sm2ItemsFilter === 'concepts') return item.type === 'concept';
-              if (sm2ItemsFilter === 'hands') return item.type === 'hand';
-              return true;
-            });
+            const filtered = fisherYatesShuffle(
+              allItems.filter(item => {
+                if (sm2ItemsFilter === 'due') return item.nextReviewDate <= now;
+                if (sm2ItemsFilter === 'concepts') return item.type === 'concept';
+                if (sm2ItemsFilter === 'hands') return item.type === 'hand';
+                return true;
+              })
+            );
 
             if (filtered.length === 0) {
               return (
-                <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-10 text-center space-y-3">
+                <div className="bg-neutral-900/55 border border-neutral-800/80 rounded-2xl p-10 shadow-sm shadow-black/30 ring-1 ring-inset ring-white/[0.03] text-center space-y-3">
                   <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto" />
-                  <h4 className="text-base font-bold text-white">¡No hay ítems en esta categoría!</h4>
-                  <p className="text-xs text-neutral-400 max-w-md mx-auto">
+                  <h4 className="text-base font-bold text-white tracking-tight">No hay ítems en esta categoría</h4>
+                  <p className="text-xs sm:text-sm text-neutral-400 max-w-md mx-auto leading-relaxed">
                     A medida que respondas spots en la Academia y analices manos en el Wizard, aparecerán aquí con sus fechas óptimas de repaso.
                   </p>
                 </div>
@@ -1335,34 +1612,34 @@ export const AcademyRoadmapDashboard: React.FC = () => {
             }
 
             return (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 {filtered.map(item => {
                   const isDue = item.nextReviewDate <= now;
                   return (
                     <div
                       key={item.id}
-                      className={`p-5 rounded-2xl border transition-all space-y-3 ${
+                      className={`p-6 rounded-2xl border transition-colors space-y-4 shadow-sm shadow-black/25 ring-1 ring-inset ring-white/[0.03] ${
                         isDue
-                          ? 'bg-neutral-950 border-amber-500/50 shadow-lg shadow-amber-500/5'
-                          : 'bg-neutral-950 border-neutral-800'
+                          ? 'bg-neutral-900/65 border-amber-500/40'
+                          : 'bg-neutral-900/50 border-neutral-800/80'
                       }`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="space-y-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-900 font-mono">
+                          <div className="flex items-center gap-2 flex-wrap text-[11px] font-mono">
+                            <span className="font-semibold text-blue-400">
                               {item.category}
                             </span>
-                            <span className="text-[10px] px-2 py-0.5 rounded bg-neutral-900 text-neutral-400 font-mono">
-                              {item.type === 'concept' ? '💡 Concepto Teórico' : '🃏 Mano Jugada'}
+                            <span className="text-neutral-500">
+                              · {item.type === 'concept' ? 'Concepto Teórico' : 'Mano Jugada'}
                             </span>
                             {isDue ? (
-                              <span className="text-[10px] px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800 font-bold font-mono">
-                                🔔 Repasar Hoy
+                              <span className="text-amber-400 font-semibold">
+                                · Repasar hoy
                               </span>
                             ) : (
-                              <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono">
-                                En memoria ({Math.max(1, Math.round((item.nextReviewDate - now) / 86400000))}d restantes)
+                              <span className="text-emerald-400">
+                                · En memoria ({Math.max(1, Math.round((item.nextReviewDate - now) / 86400000))}d)
                               </span>
                             )}
                           </div>
@@ -1370,17 +1647,17 @@ export const AcademyRoadmapDashboard: React.FC = () => {
                         </div>
 
                         <div className="text-right shrink-0 font-mono text-[11px]">
-                          <span className="text-neutral-500 block text-[9px] uppercase">Intervalo:</span>
-                          <strong className="text-blue-400 font-bold">{item.intervalDays}d</strong>
+                          <span className="text-neutral-500 block text-[9px] uppercase">Intervalo</span>
+                          <strong className="text-blue-400 font-bold tabular-nums">{item.intervalDays}d</strong>
                         </div>
                       </div>
 
-                      <div className="p-3 bg-neutral-900/60 rounded-xl border border-neutral-850 space-y-2 text-xs">
+                      <div className="p-3 bg-neutral-950/70 rounded-xl border border-neutral-800/70 space-y-2 text-xs">
                         <p className="text-neutral-300 leading-relaxed font-sans">
                           {item.content.explanation}
                         </p>
                         <div className="text-[11px] text-amber-300 font-sans border-t border-neutral-800/60 pt-1.5 flex items-start gap-1.5">
-                          <span className="shrink-0">💡</span>
+                          <Lightbulb className="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-400" />
                           <span>{item.content.rule}</span>
                         </div>
                       </div>

@@ -189,7 +189,7 @@ export function recordCollectiveUserSample(input: {
   const current = getSolverMetaState();
   const texture = input.texture || 'Seco (Dry)';
   const street = input.street || 'flop';
-  const evLoss = Number.isFinite(input.evLossPct) ? Math.max(0, input.evLossPct) : 0;
+  const evLoss = Number.isFinite(input.evLossPct) ? Math.min(500, Math.max(0, input.evLossPct)) : 0;
 
   const leaks = [...current.collectiveLeaks];
   const existingIdx = leaks.findIndex(

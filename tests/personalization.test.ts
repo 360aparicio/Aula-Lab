@@ -22,14 +22,20 @@ import {
 } from '../src/engine/evaluationBank';
 import {
   ACADEMY_SCENARIO_BANK,
+  buildShuffledAcademySessionQueue,
   getNextAcademyScenario,
   resetAcademySessionHistory,
   type AcademyCategory
 } from '../src/engine/academySpots';
 import {
   buildSimulatedHandFingerprint,
-  createSimulatedHand
+  createSimulatedHand,
+  generateDynamicCryptoSeed,
+  loadPersistedSimulatedFingerprints,
+  pickTrueRandomDeckIndex,
+  resetSimulatedHandHistory
 } from '../src/engine/handSimulator';
+import { fisherYatesShuffle } from '../src/lib/random';
 import {
   dealRandomHeroHand,
   loadTrainerStats,
@@ -391,6 +397,58 @@ export function runPersonalizationTests(): { passed: number; failed: number; err
   assert(
     simCanonicals.size >= 16,
     `Live simulator deals genuinely varied starting hands (${simCanonicals.size} distinct canonical combos in 45 hands)`
+  );
+
+  // 8. Fisher-Yates pre-shuffled Academy session queues (varied order + 0 intra-session duplicates)
+  setActiveStorageUserUid('fisher_yates_tester');
+  resetAcademySessionHistory('fisher_yates_tester');
+  const fyPool = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+  const fyOrderA = fisherYatesShuffle(fyPool).join(',');
+  const fyOrderB = fisherYatesShuffle(fyPool).join(',');
+  const fyOrderC = fisherYatesShuffle(fyPool).join(',');
+  assert(
+    new Set([fyOrderA, fyOrderB, fyOrderC]).size >= 2,
+    'fisherYatesShuffle produces genuinely distinct permutations across invocations'
+  );
+
+  const qSession1 = buildShuffledAcademySessionQueue('three_bet_pot');
+  const qSession2 = buildShuffledAcademySessionQueue('three_bet_pot');
+  assert(
+    qSession1.length === ACADEMY_SCENARIO_BANK.three_bet_pot.length,
+    `buildShuffledAcademySessionQueue returns all ${ACADEMY_SCENARIO_BANK.three_bet_pot.length} scenarios in category`
+  );
+  assert(
+    new Set(qSession1.map(s => s.id)).size === qSession1.length,
+    'buildShuffledAcademySessionQueue has zero duplicate scenario IDs within the session queue'
+  );
+  assert(
+    qSession1.map(s => s.id).join(',') !== ACADEMY_SCENARIO_BANK.three_bet_pot.map(s => s.id).join(',') ||
+      qSession2.map(s => s.id).join(',') !== ACADEMY_SCENARIO_BANK.three_bet_pot.map(s => s.id).join(','),
+    'buildShuffledAcademySessionQueue shuffles order rather than serving raw sequential bank order'
+  );
+
+  // 9. HandSimulator dynamic Crypto.getRandomValues seed, random index selector & cross-session history
+  const seed1 = generateDynamicCryptoSeed();
+  const seed2 = generateDynamicCryptoSeed();
+  assert(
+    seed1.length === 4 && seed2.length === 4 && seed1.join(':') !== seed2.join(':'),
+    'generateDynamicCryptoSeed creates distinct 128-bit dynamic seeds via Crypto.getRandomValues'
+  );
+  const pickedIndices = Array.from({ length: 18 }, () => pickTrueRandomDeckIndex(52));
+  assert(
+    new Set(pickedIndices).size >= 10 && pickedIndices.every(i => i >= 0 && i < 52),
+    `pickTrueRandomDeckIndex returns varied non-sequential indices in [0, 52) (unique=${new Set(pickedIndices).size})`
+  );
+
+  resetSimulatedHandHistory();
+  assert(loadPersistedSimulatedFingerprints().length === 0, 'resetSimulatedHandHistory clears scoped fingerprints');
+  const crossSessionH1 = createSimulatedHand({ handNumber: 1, positionFilter: 'BTN', scenarioFilter: 'SRP_IP' });
+  const crossSessionH2 = createSimulatedHand({ handNumber: 2, positionFilter: 'BTN', scenarioFilter: 'SRP_IP' });
+  const persistedFps = loadPersistedSimulatedFingerprints();
+  assert(
+    persistedFps.length >= 2 &&
+      buildSimulatedHandFingerprint(crossSessionH1) !== buildSimulatedHandFingerprint(crossSessionH2),
+    `createSimulatedHand persists cross-session fingerprints (count=${persistedFps.length}) without immediate repeat`
   );
 
   setActiveStorageUserUid(null);

@@ -8,7 +8,9 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Card, cardId, cardToString, parseCard, SUIT_COLORS, SUIT_SYMBOLS, SUITS, RANKS } from '../engine/cards';
+import { Card, cardId, cardToString, parseCard, SUIT_SYMBOLS, SUITS, RANKS } from '../engine/cards';
+import { useDeckTheme } from '../context/DeckThemeContext';
+import { PlayingCard } from './PlayingCard';
 import { evaluateCards, HandCategory } from '../engine/evaluator';
 import { TablePosition, TABLE_POSITIONS, POSITION_INFO, getPostflopRole } from './HandAndPositionBar';
 import { PreflopActionContext, getAutoMatchupProfile, OpponentProfile, OPPONENT_PROFILES } from '../engine/preflopMatchups';
@@ -113,6 +115,7 @@ export const ThinkingProcessWizard: React.FC<ThinkingProcessWizardProps> = ({
   onSolve,
   isSolving
 }) => {
+  const { deckTheme } = useDeckTheme();
   // Wizard active step
   const [activeStep, setActiveStep] = useState<WizardStep>(
     street === 'flop' ? 'flop' : street === 'turn' ? 'turn' : 'river'
@@ -327,25 +330,14 @@ export const ThinkingProcessWizard: React.FC<ThinkingProcessWizardProps> = ({
       );
     }
 
-    const isRed = c.suit === 'h' || c.suit === 'd';
     return (
-      <div
+      <PlayingCard
+        card={c}
+        size="sm"
+        label={label}
         onClick={onClick}
-        className={`w-11 h-16 rounded-lg bg-neutral-950 border border-neutral-700 flex flex-col justify-between p-1 shadow-md cursor-pointer hover:border-emerald-400 transition-colors select-none ${
-          isRed ? 'text-rose-400' : 'text-neutral-100'
-        }`}
-      >
-        <div className="flex items-center justify-between text-xs font-bold leading-none">
-          <span>{c.rank}</span>
-          <span className="text-[11px]">{SUIT_SYMBOLS[c.suit]}</span>
-        </div>
-        <div className="text-center text-lg leading-none">
-          {SUIT_SYMBOLS[c.suit]}
-        </div>
-        <div className="text-[9px] text-neutral-500 font-mono text-right">
-          {label}
-        </div>
-      </div>
+        className="w-11 h-16"
+      />
     );
   };
 
@@ -468,11 +460,10 @@ export const ThinkingProcessWizard: React.FC<ThinkingProcessWizardProps> = ({
             {/* Left: Hero Position */}
             <div className="bg-neutral-950/70 p-4 rounded-xl border border-neutral-800 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />
-                  <span>1.1 Tu Posición en la Mesa (Hero)</span>
+                <span className="text-xs font-bold text-white uppercase tracking-wider">
+                  1.1 Tu Posición en la Mesa (Hero)
                 </span>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-bold">
+                <span className="text-[11px] font-mono text-emerald-400 font-semibold">
                   Rol: {matchupProfile.heroRole}
                 </span>
               </div>
@@ -507,11 +498,10 @@ export const ThinkingProcessWizard: React.FC<ThinkingProcessWizardProps> = ({
             {/* Right: Villain Position */}
             <div className="bg-neutral-950/70 p-4 rounded-xl border border-neutral-800 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-rose-400 inline-block" />
-                  <span>1.2 Posición del Rival (Villano)</span>
+                <span className="text-xs font-bold text-white uppercase tracking-wider">
+                  1.2 Posición del Rival (Villano)
                 </span>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-950 text-rose-300 border border-rose-800 font-bold">
+                <span className="text-[11px] font-mono text-rose-400 font-semibold">
                   Rol: {matchupProfile.villainRole}
                 </span>
               </div>
@@ -616,7 +606,7 @@ export const ThinkingProcessWizard: React.FC<ThinkingProcessWizardProps> = ({
                     </div>
 
                     <div className="pt-2 border-t border-neutral-800/80 text-[10px] text-amber-300 font-medium">
-                      💡 {prof.hint}
+                      {prof.hint}
                     </div>
                   </button>
                 );
@@ -849,9 +839,8 @@ export const ThinkingProcessWizard: React.FC<ThinkingProcessWizardProps> = ({
           {/* Flop Board Selector */}
           <div className="bg-neutral-950/70 p-4 rounded-xl border border-neutral-800 space-y-3">
             <div className="flex items-center justify-between flex-wrap gap-2">
-              <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-cyan-400 inline-block" />
-                <span>2.1 Cartas Comunitarias del Flop (3 Cartas)</span>
+              <span className="text-xs font-bold text-white uppercase tracking-wider">
+                2.1 Cartas Comunitarias del Flop (3 Cartas)
               </span>
               <span className="text-xs font-mono text-emerald-400">
                 Bote: {matchupProfile.potBB} BB
@@ -1590,16 +1579,17 @@ export const ThinkingProcessWizard: React.FC<ThinkingProcessWizardProps> = ({
             {/* Grid of suits and ranks */}
             <div className="space-y-2.5">
               {SUITS.map(suit => {
-                const isRed = suit === 'h' || suit === 'd';
+                const suitText = deckTheme.suitText[suit];
+                const suitBorder = deckTheme.suitBorder[suit];
+                const cellBg = deckTheme.pickerCellBg[suit];
                 return (
                   <div key={suit} className="flex items-center gap-1.5">
-                    <span className={`w-6 text-center font-bold text-sm ${isRed ? 'text-rose-400' : 'text-neutral-300'}`}>
+                    <span className={`w-6 text-center font-bold text-sm ${suitText}`}>
                       {SUIT_SYMBOLS[suit]}
                     </span>
                     <div className="grid grid-cols-13 gap-1 flex-1">
                       {RANKS.map(rank => {
                         const id = cardId(rank, suit);
-                        // Check if card is already taken on board or hero
                         const isTaken = (heroCards && (heroCards[0]?.id === id || heroCards[1]?.id === id)) ||
                                         (boardCards && boardCards.some(c => c?.id === id));
                         return (
@@ -1608,12 +1598,10 @@ export const ThinkingProcessWizard: React.FC<ThinkingProcessWizardProps> = ({
                             type="button"
                             disabled={isTaken}
                             onClick={() => handleSelectCardModal(rank, suit)}
-                            className={`py-1.5 rounded text-xs font-mono font-bold transition-all ${
+                            className={`py-1.5 rounded text-xs font-mono font-bold transition-all cursor-pointer ${
                               isTaken
                                 ? 'bg-neutral-950 text-neutral-600 border border-neutral-900 cursor-not-allowed opacity-40'
-                                : isRed
-                                ? 'bg-rose-950/40 text-rose-300 hover:bg-rose-600 hover:text-white border border-rose-900'
-                                : 'bg-neutral-800 text-neutral-200 hover:bg-neutral-700 hover:text-white border border-neutral-700'
+                                : `${cellBg} ${suitText} border ${suitBorder}`
                             }`}
                           >
                             {rank}

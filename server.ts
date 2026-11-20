@@ -7,6 +7,7 @@
  */
 
 import 'dotenv/config';
+import crypto from 'node:crypto';
 import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -14,6 +15,8 @@ import { fileURLToPath } from 'node:url';
 import { GoogleGenAI, Type } from '@google/genai';
 import { optionalAuth, requireAuth, requireAdmin, type AuthenticatedRequest } from './src/server/authMiddleware.ts';
 import firebaseConfig from './firebase-applet-config.json' with { type: 'json' };
+import { evaluateMarketStudyFlag } from './src/lib/study/featureFlags.ts';
+import { buildMilestoneReminderEmailHtml } from './src/lib/study/milestoneScheduler.ts';
 import {
   getSolverMetaState,
   mergeInternetSolverUpdates,
@@ -21,6 +24,8 @@ import {
   type SolverMetaRule,
   type SolverSourceCitation
 } from './src/server/solverMetaStore.ts';
+
+const EPHEMERAL_CONSENT_HASH_SECRET = crypto.randomBytes(32).toString('hex');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -62,6 +67,74 @@ async function startServer() {
       firestoreDatabaseId: firebaseConfig.firestoreDatabaseId || '(default)',
       timestamp: Date.now()
     });
+  });
+
+  // Feature flags read-only endpoint (default OFF per Rule R1/R2)
+  app.get('/api/flags', (_req, res) => {
+    const flag = evaluateMarketStudyFlag({
+      envFlagValue: process.env.FEATURE_FLAG_MARKET_STUDY_V1 ?? process.env.VITE_FEATURE_MARKET_STUDY_V1 ?? null
+    });
+    res.json({
+      market_study_v1: {
+        enabled: flag.enabled,
+        cohortMaxPerLevel: flag.cohortMaxPerLevel,
+        defaultOff: true
+      },
+      timestamp: Date.now()
+    });
+  });
+
+  // Server-side irreversible HMAC-SHA256 IP hash + jurisdiction metadata for append-only legal consent
+  app.post('/api/legal/consent-meta', requireAuth, (req: AuthenticatedRequest, res) => {
+    const rawIp =
+      (typeof req.headers['x-forwarded-for'] === 'string'
+        ? req.headers['x-forwarded-for'].split(',')[0]?.trim()
+        : undefined) ||
+      req.ip ||
+      '0.0.0.0';
+    const secret = process.env.CONSENT_HASH_SECRET || EPHEMERAL_CONSENT_HASH_SECRET;
+    const ipHash = crypto
+      .createHmac('sha256', secret)
+      .update(`${req.user?.uid || 'anon'}:${rawIp}`)
+      .digest('hex')
+      .slice(0, 48);
+
+    const countryHeader =
+      req.headers['cf-ipcountry'] ||
+      req.headers['x-appengine-country'] ||
+      req.headers['x-country-code'];
+    const countryCode =
+      typeof countryHeader === 'string' && /^[A-Za-z]{2,8}$/.test(countryHeader.trim())
+        ? countryHeader.trim().toUpperCase()
+        : 'INTL';
+    const userAgent =
+      typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'].slice(0, 200) : 'unknown';
+
+    res.json({
+      ipHash: `hmac_${ipHash}`,
+      countryCode,
+      userAgent,
+      serverTimeMs: Date.now()
+    });
+  });
+
+  // Safe HTML milestone reminder preview (Days 7/14/21/30)
+  app.post('/api/study/reminder-preview', requireAuth, (req: AuthenticatedRequest, res) => {
+    const rawMilestone = req.body?.milestone;
+    const rawLevel = req.body?.level;
+    const milestone =
+      rawMilestone === 'day7' || rawMilestone === 'day14' || rawMilestone === 'day21' || rawMilestone === 'day30'
+        ? rawMilestone
+        : 'day7';
+    const level = rawLevel === 'fish' || rawLevel === 'reg' || rawLevel === 'nit' ? rawLevel : 'reg';
+    const displayName =
+      typeof req.body?.displayName === 'string' ? req.body.displayName.slice(0, 80) : req.user?.name || 'Jugador';
+    const appUrl = process.env.APP_URL && /^https?:\/\//i.test(process.env.APP_URL)
+      ? process.env.APP_URL
+      : 'https://allinstudio.edu';
+
+    const html = buildMilestoneReminderEmailHtml({ displayName, level, milestone, appUrl });
+    res.json({ milestone, level, html });
   });
 
   // Verify authenticated Firebase token

@@ -383,18 +383,18 @@ export const ProgressDashboard: React.FC = () => {
   }, [roadmapPhases]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-7">
       {/* Header Banner */}
-      <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 print:border-neutral-300 print:bg-white print:text-black">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-blue-500/10 rounded-xl border border-blue-500/30 text-blue-400">
+      <div className="bg-neutral-900/55 border border-neutral-800/80 rounded-2xl p-6 sm:p-7 shadow-sm shadow-black/30 ring-1 ring-inset ring-white/[0.03] flex flex-col sm:flex-row sm:items-center justify-between gap-5 print:border-neutral-300 print:bg-white print:text-black">
+        <div className="flex items-start sm:items-center gap-3.5">
+          <div className="p-2.5 bg-blue-500/10 rounded-xl border border-blue-500/30 text-blue-400 shrink-0">
             <BarChart3 className="w-6 h-6" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-white print:text-black">
+            <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white print:text-black">
               Auditoría Analítica D3.js &amp; Radar Nash
             </h2>
-            <p className="text-xs text-neutral-400 print:text-neutral-600 mt-0.5">
+            <p className="text-xs sm:text-sm text-neutral-400 print:text-neutral-600 mt-1 leading-relaxed">
               Comparativa en tiempo real frente al equilibrio Nash, fugas capturadas y progreso de carrera NL02 → NL100.
             </p>
           </div>
@@ -403,7 +403,7 @@ export const ProgressDashboard: React.FC = () => {
         <button
           type="button"
           onClick={() => window.print()}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-500/20 transition-all cursor-pointer print:hidden"
+          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold shadow-sm shadow-black/30 transition-colors cursor-pointer print:hidden shrink-0"
         >
           <Printer className="w-4 h-4" />
           <span>Exportar Auditoría PDF</span>
@@ -411,53 +411,53 @@ export const ProgressDashboard: React.FC = () => {
       </div>
 
       {/* KPI Strip */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4">
-          <div className="flex items-center gap-2 text-xs text-neutral-400 mb-1">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
+        <div className="bg-neutral-900/55 border border-neutral-800/80 rounded-2xl p-5 shadow-sm shadow-black/25 ring-1 ring-inset ring-white/[0.03]">
+          <div className="flex items-center gap-2 text-xs text-neutral-400 mb-1.5">
             <Award className="w-4 h-4 text-blue-400" />
             <span>Dominio General</span>
           </div>
           <div className="text-2xl font-bold font-mono text-white tabular-nums">
             {learningProfile.masteryScore}/100
           </div>
-          <div className="text-[11px] text-neutral-500 mt-1">{learningProfile.styleProfile}</div>
+          <div className="text-[11px] text-neutral-400 mt-1.5">{learningProfile.styleProfile}</div>
         </div>
 
-        <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4">
-          <div className="flex items-center gap-2 text-xs text-neutral-400 mb-1">
+        <div className="bg-neutral-900/55 border border-neutral-800/80 rounded-2xl p-5 shadow-sm shadow-black/25 ring-1 ring-inset ring-white/[0.03]">
+          <div className="flex items-center gap-2 text-xs text-neutral-400 mb-1.5">
             <ShieldAlert className="w-4 h-4 text-rose-400" />
             <span>Fugas Críticas (&gt;5% EV)</span>
           </div>
           <div className="text-2xl font-bold font-mono text-rose-400 tabular-nums">
             {learnerSummary.criticalMistakesCount}
           </div>
-          <div className="text-[11px] text-neutral-500 mt-1">
+          <div className="text-[11px] text-neutral-400 mt-1.5">
             Peor textura: {learnerSummary.worstTexture}
           </div>
         </div>
 
-        <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4">
-          <div className="flex items-center gap-2 text-xs text-neutral-400 mb-1">
+        <div className="bg-neutral-900/55 border border-neutral-800/80 rounded-2xl p-5 shadow-sm shadow-black/25 ring-1 ring-inset ring-white/[0.03]">
+          <div className="flex items-center gap-2 text-xs text-neutral-400 mb-1.5">
             <Target className="w-4 h-4 text-emerald-400" />
             <span>Retención SM-2</span>
           </div>
           <div className="text-2xl font-bold font-mono text-emerald-400 tabular-nums">
             {sm2Stats.retentionRatePct}%
           </div>
-          <div className="text-[11px] text-neutral-500 mt-1">
+          <div className="text-[11px] text-neutral-400 mt-1.5">
             {sm2Stats.masteredCount}/{sm2Stats.totalItems} conceptos dominados
           </div>
         </div>
 
-        <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4">
-          <div className="flex items-center gap-2 text-xs text-neutral-400 mb-1">
+        <div className="bg-neutral-900/55 border border-neutral-800/80 rounded-2xl p-5 shadow-sm shadow-black/25 ring-1 ring-inset ring-white/[0.03]">
+          <div className="flex items-center gap-2 text-xs text-neutral-400 mb-1.5">
             <TrendingUp className="w-4 h-4 text-amber-400" />
             <span>EV Perdido Acumulado</span>
           </div>
           <div className="text-2xl font-bold font-mono text-amber-400 tabular-nums">
             -{learnerSummary.totalEvLossBBLost} BB
           </div>
-          <div className="text-[11px] text-neutral-500 mt-1">
+          <div className="text-[11px] text-neutral-400 mt-1.5">
             Posición vulnerable: {learnerSummary.worstPosition}
           </div>
         </div>
@@ -465,9 +465,9 @@ export const ProgressDashboard: React.FC = () => {
 
       {/* Charts Row 1: Radar Chart + Grouped Bar Chart */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-5 bg-neutral-950 border border-neutral-800 rounded-2xl p-5 flex flex-col items-center">
-          <div className="w-full flex items-center justify-between mb-2">
-            <h3 className="text-sm font-bold text-white">Radar Estratégico 6 Ejes</h3>
+        <div className="lg:col-span-5 bg-neutral-900/55 border border-neutral-800/80 rounded-2xl p-6 shadow-sm shadow-black/30 ring-1 ring-inset ring-white/[0.03] flex flex-col items-center">
+          <div className="w-full flex items-center justify-between mb-3">
+            <h3 className="text-sm font-bold tracking-tight text-white">Radar Estratégico 6 Ejes</h3>
             <div className="flex items-center gap-3 text-[10px] font-mono">
               <span className="flex items-center gap-1 text-blue-400">
                 <span className="w-2.5 h-2.5 rounded-xs bg-blue-500 inline-block" /> Hero
@@ -480,9 +480,9 @@ export const ProgressDashboard: React.FC = () => {
           <svg ref={radarRef} viewBox="0 0 360 310" className="w-full max-w-[360px] h-auto" />
         </div>
 
-        <div className="lg:col-span-7 bg-neutral-950 border border-neutral-800 rounded-2xl p-5 flex flex-col">
+        <div className="lg:col-span-7 bg-neutral-900/55 border border-neutral-800/80 rounded-2xl p-6 shadow-sm shadow-black/30 ring-1 ring-inset ring-white/[0.03] flex flex-col">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-bold text-white">Precisión Hero vs Benchmark Nash (12 Categorías)</h3>
+            <h3 className="text-sm font-bold tracking-tight text-white">Precisión Hero vs Benchmark Nash (12 Categorías)</h3>
             <div className="flex items-center gap-3 text-[10px] font-mono">
               <span className="flex items-center gap-1 text-blue-400">
                 <span className="w-2.5 h-2.5 rounded-xs bg-blue-500 inline-block" /> Tu Precisión
@@ -498,30 +498,30 @@ export const ProgressDashboard: React.FC = () => {
 
       {/* Row 2: Horizontal Roadmap Chart + AI Prescriptive Audit */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-6 bg-neutral-950 border border-neutral-800 rounded-2xl p-5">
-          <h3 className="text-sm font-bold text-white mb-2">Hitos de Carrera Sincronizados (NL02 → NL100)</h3>
-          <p className="text-xs text-neutral-400 mb-3">
+        <div className="lg:col-span-6 bg-neutral-900/55 border border-neutral-800/80 rounded-2xl p-6 shadow-sm shadow-black/30 ring-1 ring-inset ring-white/[0.03]">
+          <h3 className="text-sm font-bold tracking-tight text-white mb-1.5">Hitos de Carrera Sincronizados (NL02 → NL100)</h3>
+          <p className="text-xs text-neutral-400 mb-4 leading-relaxed">
             Actualizado automáticamente al marcar objetivos en la Hoja de Ruta.
           </p>
           <svg ref={roadmapBarRef} viewBox="0 0 520 185" className="w-full h-auto" />
         </div>
 
-        <div className="lg:col-span-6 bg-neutral-950 border border-neutral-800 rounded-2xl p-5 space-y-3">
-          <h3 className="text-sm font-bold text-white flex items-center gap-2">
+        <div className="lg:col-span-6 bg-neutral-900/55 border border-neutral-800/80 rounded-2xl p-6 shadow-sm shadow-black/30 ring-1 ring-inset ring-white/[0.03] space-y-4">
+          <h3 className="text-sm font-bold tracking-tight text-white flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
             <span>Plan de Acción Prioritario (Auditoría IA)</span>
           </h3>
 
           {learnerSummary.topWeaknessPatterns.length === 0 ? (
-            <p className="text-xs text-neutral-400">
+            <p className="text-xs sm:text-sm text-neutral-400 leading-relaxed">
               No se detectaron fugas críticas superiores al 5% EV todavía. Continúa practicando en Arena y Quiz Infinito.
             </p>
           ) : (
-            <div className="space-y-2.5">
+            <div className="space-y-3">
               {learnerSummary.topWeaknessPatterns.slice(0, 3).map(pat => (
                 <div
                   key={pat.patternId}
-                  className="p-3 bg-neutral-900 border border-neutral-800 rounded-xl space-y-1 text-xs"
+                  className="p-3.5 bg-neutral-950/90 border border-neutral-800/80 rounded-xl space-y-1.5 text-xs shadow-sm shadow-black/20"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <strong className="text-white">{pat.title}</strong>

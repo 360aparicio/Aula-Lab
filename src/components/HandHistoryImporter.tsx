@@ -35,7 +35,8 @@ import {
   type Tracker2Database,
   type Tracker2FilterKey
 } from '../engine/theTracker2Engine';
-import { parseCard, SUIT_COLORS, SUIT_SYMBOLS } from '../engine/cards';
+import { parseCard, SUIT_SYMBOLS } from '../engine/cards';
+import { PlayingCard } from './PlayingCard';
 import type { SimPosition, SimScenarioType } from '../engine/handSimulator';
 import { TheTracker2HudDisplay } from './TheTracker2HudDisplay';
 import { LevelDiagnosticPanel } from './LevelDiagnosticPanel';
@@ -1418,16 +1419,7 @@ export const HandHistoryImporter: React.FC<HandHistoryImporterProps> = ({
                         .map((tok, i) => {
                           try {
                             const c = parseCard(tok);
-                            const col = SUIT_COLORS[c.suit];
-                            return (
-                              <span
-                                key={`${tok}-${i}`}
-                                className={`w-9 h-12 rounded-lg border ${col.bg} ${col.border} ${col.text} font-mono font-bold text-xs flex flex-col items-center justify-center`}
-                              >
-                                <span>{c.rank}</span>
-                                <span>{SUIT_SYMBOLS[c.suit]}</span>
-                              </span>
-                            );
+                            return <PlayingCard key={`${tok}-${i}`} card={c} size="xs" />;
                           } catch {
                             return (
                               <span key={i} className="px-2 py-1 rounded bg-neutral-900 text-xs font-mono text-white">
@@ -1453,16 +1445,7 @@ export const HandHistoryImporter: React.FC<HandHistoryImporterProps> = ({
                           .map((tok, i) => {
                             try {
                               const c = parseCard(tok);
-                              const col = SUIT_COLORS[c.suit];
-                              return (
-                                <span
-                                  key={`${tok}-${i}`}
-                                  className={`w-8 h-11 rounded-md border ${col.bg} ${col.border} ${col.text} font-mono font-bold text-xs flex flex-col items-center justify-center`}
-                                >
-                                  <span>{c.rank}</span>
-                                  <span className="text-[10px]">{SUIT_SYMBOLS[c.suit]}</span>
-                                </span>
-                              );
+                              return <PlayingCard key={`${tok}-${i}`} card={c} size="xs" />;
                             } catch {
                               return (
                                 <span key={i} className="px-2 py-1 rounded bg-neutral-900 text-xs font-mono text-white">
@@ -1505,16 +1488,7 @@ export const HandHistoryImporter: React.FC<HandHistoryImporterProps> = ({
                           .map((tok, i) => {
                             try {
                               const c = parseCard(tok);
-                              const col = SUIT_COLORS[c.suit];
-                              return (
-                                <span
-                                  key={`${tok}-${i}`}
-                                  className={`w-9 h-12 rounded-lg border ${col.bg} ${col.border} ${col.text} font-mono font-bold text-xs flex flex-col items-center justify-center`}
-                                >
-                                  <span>{c.rank}</span>
-                                  <span>{SUIT_SYMBOLS[c.suit]}</span>
-                                </span>
-                              );
+                              return <PlayingCard key={`${tok}-${i}`} card={c} size="xs" />;
                             } catch {
                               return null;
                             }

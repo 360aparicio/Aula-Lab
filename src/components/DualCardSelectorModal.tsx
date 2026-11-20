@@ -8,8 +8,10 @@
  */
 
 import React, { useState } from 'react';
-import { Card, cardId, RANKS, SUITS, SUIT_COLORS, SUIT_SYMBOLS, Rank, Suit } from '../engine/cards';
+import { Card, cardId, RANKS, SUITS, SUIT_SYMBOLS, Rank, Suit } from '../engine/cards';
+import { useDeckTheme } from '../context/DeckThemeContext';
 import { X, Check, Shuffle, Sparkles, Layers } from 'lucide-react';
+import { cryptoRandomInt } from '../lib/random';
 
 interface DualCardSelectorModalProps {
   isOpen: boolean;
@@ -26,6 +28,7 @@ export const DualCardSelectorModal: React.FC<DualCardSelectorModalProps> = ({
   initialCards,
   excludedCards = []
 }) => {
+  const { deckTheme } = useDeckTheme();
   const [activeSlot, setActiveSlot] = useState<0 | 1>(0);
   const [card1, setCard1] = useState<Card>(initialCards ? initialCards[0] : { rank: 'A', suit: 's', id: cardId('A', 's') });
   const [card2, setCard2] = useState<Card>(initialCards ? initialCards[1] : { rank: 'K', suit: 's', id: cardId('K', 's') });
@@ -100,9 +103,9 @@ export const DualCardSelectorModal: React.FC<DualCardSelectorModalProps> = ({
       }
     }
     if (deck.length >= 2) {
-      const idx1 = Math.floor(Math.random() * deck.length);
+      const idx1 = cryptoRandomInt(deck.length);
       const c1 = deck.splice(idx1, 1)[0];
-      const idx2 = Math.floor(Math.random() * deck.length);
+      const idx2 = cryptoRandomInt(deck.length);
       const c2 = deck[idx2];
       setCard1(c1);
       setCard2(c2);
@@ -129,9 +132,9 @@ export const DualCardSelectorModal: React.FC<DualCardSelectorModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-white flex items-center gap-2">
-                Selector Dual de Cartas (Rango + Palo)
-                <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-950 border border-emerald-800 text-emerald-300 font-mono">
-                  1-Paso Intuitivo
+                <span>Selector Dual de Cartas</span>
+                <span className="text-xs text-emerald-400 font-mono font-normal">
+                  · Rango + Palo en 1 paso
                 </span>
               </h2>
               <p className="text-xs text-neutral-400">
@@ -158,13 +161,13 @@ export const DualCardSelectorModal: React.FC<DualCardSelectorModalProps> = ({
               <button
                 type="button"
                 onClick={() => setActiveSlot(0)}
-                className={`relative flex items-center justify-center w-16 h-22 rounded-xl border-2 font-mono font-bold text-2xl transition-all shadow-md ${
+                className={`relative flex items-center justify-center w-16 h-22 rounded-xl border-2 font-mono font-bold text-2xl transition-all shadow-md cursor-pointer ${deckTheme.cardBg} ${
                   activeSlot === 0
-                    ? 'border-emerald-400 bg-neutral-800 ring-2 ring-emerald-500/30 scale-105'
-                    : 'border-neutral-700 bg-neutral-850 hover:border-neutral-500 opacity-90'
-                } ${SUIT_COLORS[card1.suit].text}`}
+                    ? 'border-emerald-500 ring-2 ring-emerald-500/40 scale-105'
+                    : `${deckTheme.cardBorder} hover:border-blue-400 opacity-95`
+                } ${deckTheme.suitText[card1.suit]}`}
               >
-                <span className="text-xs absolute top-1 left-1.5 font-sans font-medium text-neutral-400">#1</span>
+                <span className={`text-xs absolute top-1 left-1.5 font-sans font-medium ${deckTheme.isLightCard ? 'text-neutral-500' : 'text-neutral-400'}`}>#1</span>
                 <span>{card1.rank}</span>
                 <span className="text-xl ml-0.5">{SUIT_SYMBOLS[card1.suit]}</span>
                 {activeSlot === 0 && (
@@ -178,13 +181,13 @@ export const DualCardSelectorModal: React.FC<DualCardSelectorModalProps> = ({
               <button
                 type="button"
                 onClick={() => setActiveSlot(1)}
-                className={`relative flex items-center justify-center w-16 h-22 rounded-xl border-2 font-mono font-bold text-2xl transition-all shadow-md ${
+                className={`relative flex items-center justify-center w-16 h-22 rounded-xl border-2 font-mono font-bold text-2xl transition-all shadow-md cursor-pointer ${deckTheme.cardBg} ${
                   activeSlot === 1
-                    ? 'border-emerald-400 bg-neutral-800 ring-2 ring-emerald-500/30 scale-105'
-                    : 'border-neutral-700 bg-neutral-850 hover:border-neutral-500 opacity-90'
-                } ${SUIT_COLORS[card2.suit].text}`}
+                    ? 'border-emerald-500 ring-2 ring-emerald-500/40 scale-105'
+                    : `${deckTheme.cardBorder} hover:border-blue-400 opacity-95`
+                } ${deckTheme.suitText[card2.suit]}`}
               >
-                <span className="text-xs absolute top-1 left-1.5 font-sans font-medium text-neutral-400">#2</span>
+                <span className={`text-xs absolute top-1 left-1.5 font-sans font-medium ${deckTheme.isLightCard ? 'text-neutral-500' : 'text-neutral-400'}`}>#2</span>
                 <span>{card2.rank}</span>
                 <span className="text-xl ml-0.5">{SUIT_SYMBOLS[card2.suit]}</span>
                 {activeSlot === 1 && (
@@ -311,7 +314,7 @@ export const DualCardSelectorModal: React.FC<DualCardSelectorModalProps> = ({
                 2. Selecciona Palo (Avanza automáticamente al elegir)
               </span>
               <span className="text-xs text-neutral-500">
-                Palo actual: <strong className={SUIT_COLORS[currentActiveCard.suit].text}>{SUIT_SYMBOLS[currentActiveCard.suit]}</strong>
+                Palo actual: <strong className={deckTheme.suitText[currentActiveCard.suit]}>{SUIT_SYMBOLS[currentActiveCard.suit]}</strong>
               </span>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
@@ -326,16 +329,16 @@ export const DualCardSelectorModal: React.FC<DualCardSelectorModalProps> = ({
                     type="button"
                     disabled={disabled}
                     onClick={() => handleSelectSuit(suit)}
-                    className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl border font-medium text-sm transition-all ${
+                    className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl border font-medium text-sm transition-all cursor-pointer ${
                       disabled
                         ? 'opacity-30 cursor-not-allowed bg-neutral-900 border-neutral-800 text-neutral-600'
                         : isSelected
-                        ? 'border-emerald-400 bg-neutral-800 shadow-md ring-2 ring-emerald-500/20'
-                        : 'bg-neutral-800/70 border-neutral-700 hover:bg-neutral-750 hover:border-neutral-600'
+                        ? `border-emerald-500 ${deckTheme.cardBg} shadow-md ring-2 ring-emerald-500/30`
+                        : `${deckTheme.pickerCellBg[suit]} ${deckTheme.suitBorder[suit]}`
                     }`}
                   >
-                    <span className={`text-2xl ${SUIT_COLORS[suit].text}`}>{SUIT_SYMBOLS[suit]}</span>
-                    <span className="text-neutral-200 capitalize font-medium">
+                    <span className={`text-2xl ${deckTheme.suitText[suit]}`}>{SUIT_SYMBOLS[suit]}</span>
+                    <span className={`capitalize font-semibold ${deckTheme.isLightCard ? 'text-neutral-800' : 'text-neutral-200'}`}>
                       {suit === 's' ? 'Picas (♠)' : suit === 'h' ? 'Corazones (♥)' : suit === 'd' ? 'Diamantes (♦)' : 'Tréboles (♣)'}
                     </span>
                   </button>
@@ -365,17 +368,17 @@ export const DualCardSelectorModal: React.FC<DualCardSelectorModalProps> = ({
                         disabled={isExcluded}
                         onClick={() => handlePickSpecificCard(c)}
                         title={`${r}${SUIT_SYMBOLS[s]}`}
-                        className={`h-8 rounded text-[11px] font-mono font-bold flex flex-col items-center justify-center transition-all ${
+                        className={`h-8 rounded text-[11px] font-mono font-bold flex flex-col items-center justify-center transition-all cursor-pointer ${
                           isCard1
                             ? 'bg-emerald-500 text-neutral-950 ring-2 ring-emerald-300 font-extrabold z-10'
                             : isCard2
                             ? 'bg-cyan-500 text-neutral-950 ring-2 ring-cyan-300 font-extrabold z-10'
                             : isExcluded
                             ? 'opacity-20 cursor-not-allowed bg-neutral-900 text-neutral-600'
-                            : 'bg-neutral-800/80 hover:bg-neutral-700 text-neutral-200 border border-neutral-700/50'
+                            : `${deckTheme.pickerCellBg[s]} border ${deckTheme.suitBorder[s]}`
                         }`}
                       >
-                        <span className={isCard1 || isCard2 ? 'text-neutral-950' : SUIT_COLORS[s].text}>
+                        <span className={isCard1 || isCard2 ? 'text-neutral-950' : deckTheme.suitText[s]}>
                           {r}{SUIT_SYMBOLS[s]}
                         </span>
                       </button>

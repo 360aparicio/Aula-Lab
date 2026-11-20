@@ -10,6 +10,7 @@
  */
 
 import { readScopedItem, writeScopedItem } from '../lib/userStorage';
+import { cryptoRandomInt } from '../lib/random';
 
 export type SM2ItemType = 'concept' | 'hand' | 'scenario';
 
@@ -463,7 +464,7 @@ export class SpacedRepetitionManager {
     category: string;
     keyTakeaway: string;
   }): SM2Item {
-    const id = `sm2-hand-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const id = `sm2-hand-${Date.now()}-${cryptoRandomInt(1000000).toString(36)}`;
     const newItem: SM2Item = {
       id,
       type: 'hand',

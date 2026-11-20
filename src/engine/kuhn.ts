@@ -23,6 +23,8 @@
  * Analytical Value of the Game for P1 = -1/18 ≈ -0.05555...
  */
 
+import { cryptoRandomInt } from '../lib/random';
+
 export interface KuhnNode {
   infoSet: string;
   regrets: [number, number]; // [action 0, action 1]
@@ -150,9 +152,9 @@ export class KuhnSolver {
     let utilSum = 0;
 
     for (let i = 0; i < iterations; i++) {
-      // Shuffle 3 cards
-      const c1 = Math.floor(Math.random() * 3);
-      let c2 = Math.floor(Math.random() * 2);
+      // Shuffle 3 cards using CSPRNG
+      const c1 = cryptoRandomInt(3);
+      let c2 = cryptoRandomInt(2);
       if (c2 >= c1) c2++;
       const cards: [number, number] = [c1, c2];
 

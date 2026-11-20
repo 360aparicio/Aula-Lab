@@ -48,13 +48,41 @@ export function cryptoRandomInt(max: number): number {
   return Math.floor(Math.random() * bound);
 }
 
-export function cryptoShuffle<T>(arr: readonly T[]): T[] {
+/**
+ * Genera una semilla dinámica de 128 bits directamente desde Crypto.getRandomValues.
+ */
+export function generateDynamicSeedUint32(words = 4): Uint32Array {
+  const count = Math.max(1, Math.floor(words));
+  const out = new Uint32Array(count);
+  try {
+    if (typeof globalThis !== 'undefined' && globalThis.crypto?.getRandomValues) {
+      globalThis.crypto.getRandomValues(out);
+      return out;
+    }
+  } catch {
+    // fallback below
+  }
+  const timeEntropy = Date.now() >>> 0;
+  for (let i = 0; i < count; i++) {
+    out[i] = (timeEntropy ^ ((i + 1) * 0x9e3779b9)) >>> 0;
+  }
+  return out;
+}
+
+/**
+ * Implementación explícita de Fisher-Yates (Knuth) sin sesgo usando Crypto.getRandomValues.
+ */
+export function fisherYatesShuffle<T>(arr: readonly T[]): T[] {
   const copy = [...arr];
   for (let i = copy.length - 1; i > 0; i--) {
     const j = cryptoRandomInt(i + 1);
     [copy[i], copy[j]] = [copy[j], copy[i]];
   }
   return copy;
+}
+
+export function cryptoShuffle<T>(arr: readonly T[]): T[] {
+  return fisherYatesShuffle(arr);
 }
 
 export function cryptoPick<T>(arr: readonly T[]): T {

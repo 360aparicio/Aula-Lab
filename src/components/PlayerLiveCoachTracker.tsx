@@ -68,7 +68,7 @@ export const PlayerLiveCoachTracker: React.FC<PlayerLiveCoachTrackerProps> = ({
   }
 
   return (
-    <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-4 shadow-xl space-y-3">
+    <div className="bg-neutral-900/50 border border-neutral-800/80 rounded-2xl p-4 space-y-3">
       {/* Top Banner */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2.5">

@@ -52,6 +52,7 @@ import { PlanCatalogManager } from './PlanCatalogManager';
 import { BillingRevenuePanel } from './BillingRevenuePanel';
 import { OnboardingInvitesPanel } from './OnboardingInvitesPanel';
 import { SupportAnnouncementsPanel } from './SupportAnnouncementsPanel';
+import { MarketStudyAdminPanel } from './MarketStudyAdminPanel';
 import {
   LayoutDashboard,
   ShieldCheck,
@@ -88,7 +89,8 @@ import {
   DollarSign,
   MailCheck,
   LifeBuoy,
-  ArrowRight
+  ArrowRight,
+  FlaskConical
 } from 'lucide-react';
 
 type AdminSection =
@@ -98,6 +100,7 @@ type AdminSection =
   | 'billing'
   | 'plans'
   | 'support'
+  | 'study'
   | 'system';
 
 interface SolverMetaRule {
@@ -153,6 +156,7 @@ const NAV_SECTIONS: Array<{ id: AdminSection; label: string; hint: string; icon:
   { id: 'billing', label: 'Ingresos y Pagos', hint: 'MRR, cobros y CSV', icon: <DollarSign className="w-4 h-4" /> },
   { id: 'plans', label: 'Planes y Secciones', hint: 'Catálogo en vivo', icon: <Layers className="w-4 h-4" /> },
   { id: 'support', label: 'Soporte y Anuncios', hint: 'Avisos y tickets', icon: <LifeBuoy className="w-4 h-4" /> },
+  { id: 'study', label: 'Estudio 300', hint: 'Flag, FISH/REG/NIT, NPS', icon: <FlaskConical className="w-4 h-4" /> },
   { id: 'system', label: 'Analítica y Backend', hint: 'D3, BD, API y logs', icon: <BarChart3 className="w-4 h-4" /> }
 ];
 
@@ -1675,6 +1679,14 @@ export const AdminDashboard: React.FC = () => {
               announcements={announcements}
               tickets={tickets}
               onRefresh={loadAllCoreData}
+              onStatus={(msg) => showSuccess(msg)}
+              onError={(err) => setErrorMsg(err)}
+            />
+          )}
+
+          {/* SECTION 6B: MARKET STUDY V1 (FEATURE FLAG & COHORTS) */}
+          {section === 'study' && (
+            <MarketStudyAdminPanel
               onStatus={(msg) => showSuccess(msg)}
               onError={(err) => setErrorMsg(err)}
             />

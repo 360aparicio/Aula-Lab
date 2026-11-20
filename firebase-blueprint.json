@@ -79,6 +79,28 @@
           "type": "object",
           "description": "Latest and best evaluation exam scores across fixed and variable spot modules"
         },
+        "studyLevel": {
+          "type": "string",
+          "enum": ["fish", "reg", "nit"],
+          "maxLength": 8,
+          "description": "Optional active Market Study density level when market_study_v1 is enabled"
+        },
+        "studyLevelSource": {
+          "type": "string",
+          "enum": ["self_selected", "cohort_assignment", "admin_override"],
+          "maxLength": 24,
+          "description": "Provenance of studyLevel following admin_override > cohort_assignment > self_selected"
+        },
+        "marketStudyEnrolled": {
+          "type": "boolean",
+          "description": "Optional flag indicating active participation in the 30-day market study"
+        },
+        "deckTheme": {
+          "type": "string",
+          "enum": ["classic_white", "four_color_white", "dark_pro", "four_color_dark"],
+          "maxLength": 24,
+          "description": "Selected global playing card deck theme (defaults to classic_white)"
+        },
         "createdAt": {
           "type": "string",
           "format": "date-time",
@@ -579,6 +601,114 @@
         "category", "priority", "status", "adminNotes", "createdByUid",
         "createdAt", "updatedAt"
       ]
+    },
+    "FeatureFlag": {
+      "title": "FeatureFlag",
+      "description": "Runtime feature flag configuration (default OFF for market_study_v1) managed by Admin Console.",
+      "type": "object",
+      "properties": {
+        "flagId": { "type": "string", "minLength": 2, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "enabled": { "type": "boolean" },
+        "cohortMaxPerLevel": { "type": "number" },
+        "rolloutNotes": { "type": "string", "maxLength": 240 },
+        "updatedByUid": { "type": "string", "minLength": 4, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["flagId", "enabled", "cohortMaxPerLevel", "rolloutNotes", "updatedByUid", "updatedAt"]
+    },
+    "StudyCohort": {
+      "title": "StudyCohort",
+      "description": "Atomic 100-seat cohort quota counter per study level (fish, reg, nit).",
+      "type": "object",
+      "properties": {
+        "level": { "type": "string", "enum": ["fish", "reg", "nit"], "maxLength": 8 },
+        "maxQuota": { "type": "number" },
+        "currentCount": { "type": "number" },
+        "waitlistCount": { "type": "number" },
+        "active": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["level", "maxQuota", "currentCount", "waitlistCount", "active", "updatedAt"]
+    },
+    "StudyConsent": {
+      "title": "StudyConsent",
+      "description": "Append-only legal consent and >=18 verification audit record (Law 1581/2012 + GDPR, 5-year retention).",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 6, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "consentVersion": { "type": "string", "minLength": 1, "maxLength": 16 },
+        "accepted": { "type": "boolean" },
+        "isAdult": { "type": "boolean" },
+        "birthYear": { "type": "number" },
+        "jurisdiction": { "type": "string", "enum": ["CO_1581_GDPR"], "maxLength": 24 },
+        "ipHash": { "type": "string", "minLength": 4, "maxLength": 96 },
+        "countryCode": { "type": "string", "minLength": 2, "maxLength": 12 },
+        "userAgent": { "type": "string", "maxLength": 200 },
+        "status": { "type": "string", "enum": ["active", "revoked"], "maxLength": 16 },
+        "acceptedAt": { "type": "string", "format": "date-time" },
+        "revokedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "consentVersion", "accepted", "isAdult", "birthYear", "jurisdiction", "ipHash", "countryCode", "userAgent", "status", "acceptedAt"]
+    },
+    "StudyEnrollment": {
+      "title": "StudyEnrollment",
+      "description": "Participant cohort assignment, level resolution provenance, and withdrawal status.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 6, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "selfSelectedLevel": { "type": "string", "enum": ["fish", "reg", "nit"], "maxLength": 8 },
+        "cohortLevel": { "type": "string", "enum": ["fish", "reg", "nit"], "maxLength": 8 },
+        "adminOverrideLevel": { "type": "string", "enum": ["fish", "reg", "nit", "none"], "maxLength": 8 },
+        "effectiveLevel": { "type": "string", "enum": ["fish", "reg", "nit"], "maxLength": 8 },
+        "levelSource": { "type": "string", "enum": ["self_selected", "cohort_assignment", "admin_override"], "maxLength": 24 },
+        "status": { "type": "string", "enum": ["active", "waitlisted", "withdrawn", "completed"], "maxLength": 16 },
+        "consentVersion": { "type": "string", "minLength": 1, "maxLength": 16 },
+        "enrolledAtMs": { "type": "number" },
+        "studyEndsAtMs": { "type": "number" },
+        "completedSurveys": { "type": "array" },
+        "withdrawnAtMs": { "type": "number" },
+        "purgeScheduledAtMs": { "type": "number" },
+        "enrolledAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "selfSelectedLevel", "cohortLevel", "adminOverrideLevel", "effectiveLevel", "levelSource", "status", "consentVersion", "enrolledAtMs", "studyEndsAtMs", "completedSurveys", "enrolledAt", "updatedAt"]
+    },
+    "StudyEvent": {
+      "title": "StudyEvent",
+      "description": "PII-free batched market study interaction telemetry event (6-month retention).",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 6, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "sessionId": { "type": "string", "minLength": 2, "maxLength": 64 },
+        "cohortLevel": { "type": "string", "enum": ["fish", "reg", "nit"], "maxLength": 8 },
+        "effectiveLevel": { "type": "string", "enum": ["fish", "reg", "nit"], "maxLength": 8 },
+        "eventName": { "type": "string", "minLength": 2, "maxLength": 48 },
+        "module": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "durationMs": { "type": "number" },
+        "metadataJson": { "type": "string", "maxLength": 500 },
+        "expiresAtMs": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "sessionId", "cohortLevel", "effectiveLevel", "eventName", "module", "durationMs", "metadataJson", "expiresAtMs", "createdAt"]
+    },
+    "StudyFeedback": {
+      "title": "StudyFeedback",
+      "description": "Milestone NPS/PMF and density satisfaction survey (Days 7/14/21/30, 12-month retention).",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 6, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "cohortLevel": { "type": "string", "enum": ["fish", "reg", "nit"], "maxLength": 8 },
+        "effectiveLevel": { "type": "string", "enum": ["fish", "reg", "nit"], "maxLength": 8 },
+        "milestone": { "type": "string", "enum": ["day7", "day14", "day21", "day30"], "maxLength": 16 },
+        "npsScore": { "type": "number" },
+        "pmfAnswer": { "type": "string", "enum": ["very_disappointed", "somewhat_disappointed", "not_disappointed"], "maxLength": 32 },
+        "levelSatisfaction": { "type": "number" },
+        "densityFeedback": { "type": "string", "enum": ["too_simple", "just_right", "too_complex"], "maxLength": 24 },
+        "openComment": { "type": "string", "maxLength": 800 },
+        "expiresAtMs": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "cohortLevel", "effectiveLevel", "milestone", "npsScore", "pmfAnswer", "levelSatisfaction", "densityFeedback", "openComment", "expiresAtMs", "createdAt"]
     }
   },
   "firestore": {
@@ -617,6 +747,30 @@
     "/adminAuditLogs/{logId}": {
       "schema": { "$ref": "#/entities/AdminAuditLog" },
       "description": "Admin-only immutable audit logs of plan and role management actions."
+    },
+    "/featureFlags/{flagId}": {
+      "schema": { "$ref": "#/entities/FeatureFlag" },
+      "description": "Admin-controlled runtime feature flags (e.g. market_study_v1 default OFF)."
+    },
+    "/studyCohorts/{cohortId}": {
+      "schema": { "$ref": "#/entities/StudyCohort" },
+      "description": "Atomic 100-user cohort counters per level (fish, reg, nit)."
+    },
+    "/studyConsents/{consentId}": {
+      "schema": { "$ref": "#/entities/StudyConsent" },
+      "description": "Append-only legal consent records (5-year retention)."
+    },
+    "/studyEnrollments/{userId}": {
+      "schema": { "$ref": "#/entities/StudyEnrollment" },
+      "description": "Market study enrollment, level provenance, and withdrawal status per user."
+    },
+    "/studyEvents/{eventId}": {
+      "schema": { "$ref": "#/entities/StudyEvent" },
+      "description": "PII-free batched market study interaction telemetry events."
+    },
+    "/studyFeedback/{feedbackId}": {
+      "schema": { "$ref": "#/entities/StudyFeedback" },
+      "description": "Scheduled Day 7/14/21/30 NPS & PMF feedback responses."
     }
   }
 }

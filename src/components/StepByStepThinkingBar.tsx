@@ -11,7 +11,9 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import { Card, cardId, cardToString, parseCard, RANKS, SUIT_COLORS, SUIT_SYMBOLS, SUITS } from '../engine/cards';
+import { Card, cardId, cardToString, parseCard, RANKS, SUIT_SYMBOLS, SUITS } from '../engine/cards';
+import { PlayingCard } from './PlayingCard';
+import { useDeckTheme } from '../context/DeckThemeContext';
 import { TablePosition, TABLE_POSITIONS, POSITION_INFO, getPostflopRole } from './HandAndPositionBar';
 import { PreflopActionContext, getAutoMatchupProfile } from '../engine/preflopMatchups';
 import { evaluateCards } from '../engine/evaluator';
@@ -67,6 +69,8 @@ export const StepByStepThinkingBar: React.FC<StepByStepThinkingBarProps> = ({
   onStreetChange,
   extraAction
 }) => {
+  const { deckTheme } = useDeckTheme();
+
   // Modal state for card picker
   const [isCardModalOpen, setIsCardModalOpen] = useState(false);
   const [modalTarget, setModalTarget] = useState<'hero' | 'board'>('hero');
@@ -353,23 +357,18 @@ export const StepByStepThinkingBar: React.FC<StepByStepThinkingBarProps> = ({
                     </button>
                   );
                 }
-                const isRed = card.suit === 'h' || card.suit === 'd';
                 return (
-                  <div
+                  <PlayingCard
                     key={slot}
+                    card={card}
+                    size="sm"
                     onClick={() => {
                       setModalTarget('hero');
                       setTargetSlot(slot);
                       setIsCardModalOpen(true);
                     }}
-                    className={`w-10 h-14 rounded-lg bg-neutral-950 border border-neutral-700 flex flex-col justify-between p-1 shadow-md cursor-pointer hover:border-emerald-400 transition-colors select-none ${
-                      isRed ? 'text-rose-400' : 'text-neutral-100'
-                    }`}
-                  >
-                    <div className="text-[10px] font-bold leading-none">{card.rank}</div>
-                    <div className="text-center text-sm leading-none">{SUIT_SYMBOLS[card.suit]}</div>
-                    <div className="text-[8px] text-neutral-500 font-mono text-right">{SUIT_SYMBOLS[card.suit]}</div>
-                  </div>
+                    title="Cambiar carta"
+                  />
                 );
               })}
             </div>
@@ -494,28 +493,19 @@ export const StepByStepThinkingBar: React.FC<StepByStepThinkingBarProps> = ({
                 );
               }
 
-              const isRed = card.suit === 'h' || card.suit === 'd';
               return (
-                <div
+                <PlayingCard
                   key={idx}
+                  card={card}
+                  size="sm"
+                  label={idx < 3 ? 'Flop' : idx === 3 ? 'Turn' : 'River'}
                   onClick={() => {
                     setModalTarget('board');
                     setTargetSlot(idx);
                     setIsCardModalOpen(true);
                   }}
-                  className={`w-11 h-16 rounded-lg bg-neutral-950 border border-neutral-700 flex flex-col justify-between p-1.5 shadow-md cursor-pointer hover:border-emerald-400 transition-colors select-none ${
-                    isRed ? 'text-rose-400' : 'text-neutral-100'
-                  }`}
-                >
-                  <div className="flex items-center justify-between text-xs font-bold leading-none">
-                    <span>{card.rank}</span>
-                    <span className="text-[10px]">{SUIT_SYMBOLS[card.suit]}</span>
-                  </div>
-                  <div className="text-center text-base leading-none">{SUIT_SYMBOLS[card.suit]}</div>
-                  <div className="text-[8px] text-neutral-500 font-mono text-right">
-                    {idx < 3 ? `Flop` : idx === 3 ? 'Turn' : 'River'}
-                  </div>
-                </div>
+                  title="Cambiar carta del board"
+                />
               );
             })}
           </div>
@@ -566,10 +556,12 @@ export const StepByStepThinkingBar: React.FC<StepByStepThinkingBarProps> = ({
 
             <div className="space-y-2.5">
               {SUITS.map(suit => {
-                const isRed = suit === 'h' || suit === 'd';
+                const suitTextClass = deckTheme.suitText[suit];
+                const pickerCellBgClass = deckTheme.pickerCellBg[suit];
+                const suitBorderClass = deckTheme.suitBorder[suit];
                 return (
                   <div key={suit} className="flex items-center gap-1.5">
-                    <span className={`w-6 text-center font-bold text-sm ${isRed ? 'text-rose-400' : 'text-neutral-300'}`}>
+                    <span className={`w-6 text-center font-bold text-sm ${suitTextClass}`}>
                       {SUIT_SYMBOLS[suit]}
                     </span>
                     <div className="grid grid-cols-13 gap-1 flex-1">
@@ -584,12 +576,10 @@ export const StepByStepThinkingBar: React.FC<StepByStepThinkingBarProps> = ({
                             type="button"
                             disabled={isTaken}
                             onClick={() => handleSelectCard(rank, suit)}
-                            className={`py-1.5 rounded text-xs font-mono font-bold transition-all cursor-pointer ${
+                            className={`py-1.5 rounded text-xs font-mono font-bold transition-all border ${
                               isTaken
-                                ? 'bg-neutral-950 text-neutral-600 border border-neutral-900 cursor-not-allowed opacity-30'
-                                : isRed
-                                ? 'bg-rose-950/40 text-rose-300 hover:bg-rose-600 hover:text-white border border-rose-900'
-                                : 'bg-neutral-800 text-neutral-200 hover:bg-neutral-700 hover:text-white border border-neutral-700'
+                                ? 'bg-neutral-950 text-neutral-700 border-neutral-900 cursor-not-allowed opacity-30'
+                                : `${pickerCellBgClass} ${suitTextClass} ${suitBorderClass} cursor-pointer`
                             }`}
                           >
                             {rank}

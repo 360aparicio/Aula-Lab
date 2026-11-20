@@ -25,7 +25,8 @@ import {
   BarChart3,
   ChevronDown,
   GraduationCap,
-  Wrench
+  Wrench,
+  Settings
 } from 'lucide-react';
 import { UserAuthButton } from './UserAuthButton';
 import { useAuth } from '../context/AuthContext';
@@ -41,6 +42,7 @@ interface HeaderProps {
   onQuickSolve: () => void;
   onOpenPlanBenefits: () => void;
   onOpenSupport?: () => void;
+  onOpenSettings?: () => void;
   isSolving: boolean;
 }
 
@@ -51,6 +53,7 @@ export const Header: React.FC<HeaderProps> = ({
   onQuickSolve,
   onOpenPlanBenefits,
   onOpenSupport,
+  onOpenSettings,
   isSolving
 }) => {
   const { isAdmin, verifyAdminSession, planTier, activePlanConfig, canAccessSection } = useAuth();
@@ -114,9 +117,9 @@ export const Header: React.FC<HeaderProps> = ({
 
   const getTabClass = (tab: NavTab, locked: boolean) => {
     const isActive = activeTab === tab;
-    return `hover:text-white transition-all whitespace-nowrap shrink-0 py-1 border-b-2 flex items-center gap-1.5 cursor-pointer ${
+    return `hover:text-white transition-colors whitespace-nowrap shrink-0 py-1.5 border-b-2 flex items-center gap-1.5 cursor-pointer ${
       isActive
-        ? 'text-white border-blue-500 font-bold shadow-[0_3px_12px_rgba(59,130,246,0.45)]'
+        ? 'text-white border-blue-500 font-semibold'
         : locked
         ? 'border-transparent text-neutral-600 hover:text-neutral-400'
         : 'border-transparent text-neutral-400 hover:text-neutral-200'
@@ -161,13 +164,13 @@ export const Header: React.FC<HeaderProps> = ({
   const isSecondaryActive = visibleSecondary.some(s => s.id === activeTab);
 
   return (
-    <header className="relative flex items-center justify-between gap-4 px-5 py-3.5 bg-black border-b border-neutral-800/80 shrink-0 print:hidden">
+    <header className="sticky top-0 z-40 flex items-center justify-between gap-4 px-5 py-3 bg-neutral-950/85 backdrop-blur-md border-b border-neutral-800/80 shrink-0 print:hidden">
       {/* Zone 1: Clean single-element Brand Wordmark */}
       <div className="flex items-center shrink-0">
         <button
           type="button"
           onClick={() => onTabChange(experienceLevel === 'beginner' ? 'fundamentals' : 'wizard')}
-          className="text-lg font-black tracking-tight text-white whitespace-nowrap shrink-0 hover:text-blue-400 transition-colors text-left cursor-pointer"
+          className="text-lg font-extrabold tracking-tight text-white whitespace-nowrap shrink-0 hover:opacity-90 transition-opacity text-left cursor-pointer"
         >
           <span className="bg-gradient-to-r from-blue-400 via-cyan-300 to-indigo-400 bg-clip-text text-transparent">
             Allin School
@@ -210,7 +213,7 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
 
             {toolsOpen && (
-              <div className="absolute left-0 top-full mt-2 w-56 rounded-xl bg-neutral-950 border border-neutral-800 shadow-2xl p-1.5 z-50 space-y-0.5">
+              <div className="absolute left-0 top-full mt-2 w-56 rounded-xl bg-neutral-900 border border-neutral-800 shadow-lg p-1.5 z-50 space-y-0.5">
                 {visibleSecondary.map(item => {
                   const locked = !isNavUnlocked(item.id);
                   const isAct = activeTab === item.id;
@@ -224,10 +227,10 @@ export const Header: React.FC<HeaderProps> = ({
                       }}
                       className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs text-left transition-colors cursor-pointer ${
                         isAct
-                          ? 'bg-blue-600/20 text-white font-bold border border-blue-500/30'
+                          ? 'bg-blue-600/20 text-white font-semibold border border-blue-500/30'
                           : locked
-                          ? 'text-neutral-600 hover:bg-neutral-900'
-                          : 'text-neutral-300 hover:text-white hover:bg-neutral-900'
+                          ? 'text-neutral-600 hover:bg-neutral-800/60'
+                          : 'text-neutral-300 hover:text-white hover:bg-neutral-800/60'
                       }`}
                     >
                       <span className="flex items-center gap-2">
@@ -248,7 +251,7 @@ export const Header: React.FC<HeaderProps> = ({
         <button
           type="button"
           onClick={onOpenPlanBenefits}
-          className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-neutral-950 hover:bg-neutral-900 border border-neutral-800 hover:border-blue-500/50 text-xs font-semibold text-neutral-200 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+          className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-neutral-900/70 hover:bg-neutral-800 border border-neutral-800 hover:border-blue-500/50 text-xs font-semibold text-neutral-200 transition-colors cursor-pointer whitespace-nowrap shrink-0"
           title="Ver secciones incluidas y beneficios de tu plan"
         >
           <Crown className={`w-3.5 h-3.5 ${planTier === 'elite' ? 'text-amber-400' : planTier === 'pro' ? 'text-blue-400' : 'text-neutral-400'}`} />
@@ -289,16 +292,33 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         )}
 
-        <UserAuthButton onOpenPlanBenefits={onOpenPlanBenefits} onOpenSupport={onOpenSupport} />
+        {onOpenSettings && (
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-neutral-900/70 hover:bg-neutral-800 border border-neutral-800 hover:border-blue-500/50 text-xs font-semibold text-neutral-200 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            title="Ajustes de usuario y estilo de baraja"
+            aria-label="Ajustes de usuario y baraja"
+          >
+            <Settings className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="hidden xl:inline">Baraja</span>
+          </button>
+        )}
+
+        <UserAuthButton
+          onOpenPlanBenefits={onOpenPlanBenefits}
+          onOpenSupport={onOpenSupport}
+          onOpenSettings={onOpenSettings}
+        />
 
         <button
           type="button"
           onClick={onQuickSolve}
           disabled={isSolving}
-          className={`flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-xl transition-all whitespace-nowrap shrink-0 shadow-lg cursor-pointer ${
+          className={`flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-xl transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
             isSolving
               ? 'bg-neutral-800 text-neutral-400 border border-neutral-700 cursor-not-allowed'
-              : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/20 hover:scale-[1.02]'
+              : 'bg-blue-600 hover:bg-blue-500 text-white'
           }`}
         >
           <Play className="w-3.5 h-3.5 fill-current" />
@@ -307,7 +327,7 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {toggleError && (
-        <div className="absolute right-5 top-full mt-2 z-50 px-3 py-2 rounded-xl bg-rose-950 border border-rose-700 text-xs text-rose-100 shadow-2xl flex items-center gap-2">
+        <div className="absolute right-5 top-full mt-2 z-50 px-3 py-2 rounded-xl bg-rose-950 border border-rose-700 text-xs text-rose-100 shadow-lg flex items-center gap-2">
           <span>{toggleError}</span>
           <button
             type="button"
@@ -322,7 +342,7 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Mobile responsive navigation strip */}
       <nav
         aria-label="Navegación móvil"
-        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-black/95 border-t border-neutral-800 px-3 py-2 flex items-center gap-4 text-xs font-medium overflow-x-auto"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-neutral-950/95 backdrop-blur-md border-t border-neutral-800/80 px-3 py-2 flex items-center gap-4 text-xs font-medium overflow-x-auto"
       >
         {allMobileItems.map(item => {
           const locked = !isNavUnlocked(item.id);
